@@ -197,7 +197,7 @@ function Sino({ irPara }: { irPara: (v: ViewKey) => void }) {
 export function Shell({ view, irPara, onLogout, children }: {
   view: ViewKey; irPara: (v: ViewKey) => void; onLogout: () => void; children: ReactNode;
 }) {
-  const { atual, unidades, tarefas, config, perfilSimulado, setPerfilSimulado, temPermissaoMenu, ativos } = useApp();
+  const { atual, unidades, tarefas, config, perfilSimulado, setPerfilSimulado, temPermissaoMenu, ativos, modoRestrito } = useApp();
   const [menuAberto, setMenuAberto] = useState(false);
   const [userAberto, setUserAberto] = useState(false);
   const [buscaAberta, setBuscaAberta] = useState(false);
@@ -369,6 +369,15 @@ export function Shell({ view, irPara, onLogout, children }: {
             )}
           </div>
         </header>
+
+        {modoRestrito && (
+          <div className="px-4 sm:px-6 pt-3 max-w-[1460px] w-full mx-auto">
+            <div className="rounded-lg px-4 py-2.5 flex items-center gap-3 anim-pop" style={{ background: "var(--red-soft)", border: "1px solid var(--red)" }}>
+              <Icon name="cadeado" size={17} className="text-[var(--red)] flex-none" />
+              <span className="text-[12.5px]"><strong style={{ color: "var(--red)" }}>Sistema em modo restrito por licenciamento.</strong> <span style={{ color: "var(--muted)" }}>Consultas, relatórios, backups e exportações permanecem liberados; registros operacionais novos estão bloqueados. Nenhum dado é excluído.</span></span>
+            </div>
+          </div>
+        )}
 
         <main className="flex-1 px-4 sm:px-6 py-5 max-w-[1460px] w-full mx-auto">{children}</main>
 

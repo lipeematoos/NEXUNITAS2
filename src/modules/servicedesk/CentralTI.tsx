@@ -4,8 +4,9 @@ import { CabecalhoPagina } from "../../components/shell";
 import { CATEGORIAS_PORTAL, Chamado, STATUS_CHAMADO, TIPO_CHAMADO } from "../../lib/data";
 import { fmtData, fmtDataHora, fmtNum, tempoRel } from "../../lib/format";
 import { useApp } from "../../lib/store";
+import AdminCentral from "./AdminCentral";
 
-type Aba = "portal" | "fila" | "meus" | "base" | "admin";
+type Aba = "portal" | "fila" | "meus" | "base" | "roteamento" | "admin";
 
 export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
   const app = useApp();
@@ -13,6 +14,7 @@ export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
     chamados, servicos, gruposSuporte, usuarios, unidades, ativos, regrasSLA, config, atual,
     abrirChamado, mudarStatusChamado, atribuirChamado, comentarChamado, decidirAprovacao,
     setServicos, setRegrasSLA, criarArtigoBase, baseConhecimento, temPermissao,
+    simularRoteamento, modoRestrito,
   } = app;
   const toast = useToast();
   const [aba, setAba] = useState<Aba>("portal");
@@ -33,11 +35,20 @@ export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
   const [novo, setNovo] = useState({
     titulo: "", descricao: "", tipo: "Solicitação de Serviço" as (typeof TIPO_CHAMADO)[number],
     categoriaId: "cat4", servicoId: "sv1", prioridade: "Normal", local: "", patrimonioId: "",
+    tecnicoPreferencialId: "",
   });
 
   const chamadoAtual = detalhe ? chamados.find((c) => c.id === detalhe.id) ?? null : null;
   const nomeDe = (id: string | null) => usuarios.find((u) => u.id === id);
   const unidadeDe = (id: string) => unidades.find((u) => u.id === id);
+
+  const previaRota = useMemo(
+    () => simularRoteamento(atual.unidadeId, novo.servicoId || null, novo.categoriaId),
+    [novo.servicoId, novo.categoriaId, simularRoteamento, atual.unidadeId]
+  );
+  const servicoSel = servicos.find((s) => s.id === novo.servicoId);
+  const permiteTecnico = (servicoSel?.selecaoTecnico ?? "Não") !== "Não";
+  const tecnicosDisponiveis = gruposSuporte.find((g) => g.id === previaRota.grupoId)?.membroIds ?? [];
 
   /* ===== Fila e indicadores ===== */
   const hoje = new Date().toISOString().slice(0, 10);
@@ -62,8 +73,11 @@ export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
 
   /* ===== Ações ===== */
   const abrirNovo = () => {
+    if (modoRestrito) { toast("Sistema em modo restrito", "vermelho", "A criação de novos chamados está bloqueada por licenciamento. Consultas e relatórios continuam disponíveis."); return; }
     if (!novo.titulo.trim() || !novo.descricao.trim()) { toast("Preencha título e descrição", "vermelho"); return; }
-    const criado = abrirChamado({ ...novo, servicoId: novo.servicoId || null, patrimonioId: novo.patrimonioId || null });
+    if (!novo.local.trim()) { toast("Informe a sala / local do atendimento", "vermelho"); return; }
+    if (servicoSel?.selecaoTecnico === "Obrigatório" && !novo.tecnicoPreferencialId) { toast("Este serviço exige a escolha de um técnico", "vermelho", "Selecione o técnico preferencial do grupo responsável."); return; }
+    const criado = abrirChamado({ ...novo, servicoId: novo.servicoId || null, patrimonioId: novo.patrimonioId || null, tecnicoPreferencialId: novo.tecnicoPreferencialId || null });
     toast("Chamado registrado", "verde", `${criado.numero} — prazo ${fmtData(criado.prazoResolucao)} ${new Date(criado.prazoResolucao).getHours()}h`);
     if (criado.status === "Aguardando Aprovação") toast("Enviado para aprovação", "ambar", "A execução depende da aprovação configurada para este serviço.");
     setModalNovo(false);
@@ -100,6 +114,7 @@ export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
     { chave: "fila", rotulo: "Fila de Atendimento", icone: "fone" },
     { chave: "meus", rotulo: "Meus Chamados", icone: "usuario" },
     { chave: "base", rotulo: "Base de Conhecimento", icone: "documentos" },
+    ...(podeGerir ? [{ chave: "roteamento" as Aba, rotulo: "Roteamento e Domínios", icone: "fluxos" }] : []),
     ...(podeGerir ? [{ chave: "admin" as Aba, rotulo: "Administração da Central", icone: "engrenagem" }] : []),
   ];
 
@@ -380,6 +395,9 @@ export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
         </div>
       )}
 
+      {/* ===== Roteamento e domínios ===== */}
+      {aba === "roteamento" && <AdminCentral />}
+
       {/* ===== Drawer do chamado ===== */}
       <PainelLateral aberto={!!chamadoAtual} onFechar={() => setDetalhe(null)}
         titulo={chamadoAtual ? <span className="flex items-center gap-2"><span className="tabular-nums" style={{ color: "var(--muted)", fontSize: 12 }}>{chamadoAtual.numero}</span> <StatusChamadoChip s={chamadoAtual.status} /></span> : ""}>
@@ -463,6 +481,23 @@ export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {(c.roteamento?.length ?? 0) > 0 && (
+                <div>
+                  <div className="ovl mb-2.5">Histórico de Roteamento</div>
+                  <ol className="m-0 p-0 list-none space-y-2">
+                    {c.roteamento!.map((r, i) => (
+                      <li key={i} className="tick-row text-[12px]">
+                        <span className="font-bold">{r.regra}</span>
+                        <span className="block mt-0.5" style={{ color: "var(--muted)" }}>{r.detalhe}</span>
+                        <span className="block text-[10.5px] mt-0.5" style={{ color: "var(--muted)" }}>
+                          {fmtDataHora(r.data)} · Grupo: {r.grupo} · Domínio: {r.dominio}{r.tecnico ? ` · Técnico: ${r.tecnico}` : ""} · {r.automatico ? "automático" : "manual"}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
               )}
 
@@ -559,6 +594,25 @@ export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
             <div className="flex items-center gap-2 text-[12px] font-semibold px-3.5 py-2.5 rounded-lg anim-pop" style={{ background: "var(--amber-soft)", color: "var(--amber)" }}>
               <Icon name="carimbo" size={15} /> Este serviço exige aprovação antes da execução pela TI. O chamado iniciará como “Aguardando Aprovação”.
             </div>
+          )}
+          <div className="rounded-lg p-3.5 anim-fade" key={`${previaRota.grupoId}-${previaRota.regra}`} style={{ background: "rgba(30,122,84,0.06)", border: "1px solid rgba(30,122,84,0.25)" }}>
+            <div className="flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>
+              <Icon name="fluxos" size={13} /> Roteamento automático — você não precisa saber qual equipe atende
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[12.5px]">
+              <strong>{previaRota.grupoNome}</strong>
+              <span style={{ color: "var(--muted)" }}>Domínio: {previaRota.dominioNome}</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: "#fff", color: "var(--green)", border: "1px solid rgba(30,122,84,0.3)" }}>{previaRota.regra}</span>
+            </div>
+          </div>
+          {permiteTecnico && (
+            <Seletor
+              rotulo={`Técnico preferencial ${servicoSel?.selecaoTecnico === "Obrigatório" ? "(obrigatório)" : "(opcional)"}`}
+              obrigatorio={servicoSel?.selecaoTecnico === "Obrigatório"}
+              valor={novo.tecnicoPreferencialId}
+              onChange={(v) => setNovo({ ...novo, tecnicoPreferencialId: v })}
+              opcoes={[{ valor: "", rotulo: "Definido automaticamente pelo grupo" }, ...tecnicosDisponiveis.map((id) => ({ valor: id, rotulo: usuarios.find((u) => u.id === id)?.nome ?? id }))]}
+            />
           )}
           <div className="grid grid-cols-2 gap-4">
             <Seletor rotulo="Prioridade" obrigatorio valor={novo.prioridade} onChange={(v) => setNovo({ ...novo, prioridade: v })}

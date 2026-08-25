@@ -4,6 +4,7 @@ import { CabecalhoPagina } from "../components/shell";
 import { ACOES_PERMISSAO, MODULOS_PERMISSAO, PERFIS_RBAC, Usuario } from "../lib/data";
 import { fmtDataHora, fmtNum } from "../lib/format";
 import { useApp } from "../lib/store";
+import AdminSistema from "../modules/admin/AdminSistema";
 
 const TIPOS_UNIDADE = ["Secretaria", "Departamento", "Diretoria", "Divisão", "Coordenadoria", "Setor", "Núcleo", "Unidade", "Outro"];
 
@@ -12,7 +13,7 @@ const TIPOS_UNIDADE = ["Secretaria", "Departamento", "Diretoria", "Divisão", "C
 export function Administracao() {
   const { usuarios, unidades, perfis, setPerfis, auditoria, toggleUsuario, criarUnidade, removerUnidade } = useApp();
   const toast = useToast();
-  const [aba, setAba] = useState<"usuarios" | "perfis" | "unidades" | "cargos" | "auditoria">("usuarios");
+  const [aba, setAba] = useState<"usuarios" | "perfis" | "unidades" | "cargos" | "auditoria" | "sistema">("usuarios");
   const [busca, setBusca] = useState("");
   const [confirmaSuspensao, setConfirmaSuspensao] = useState<Usuario | null>(null);
   const [confirmaExclusao, setConfirmaExclusao] = useState<string | null>(null);
@@ -53,7 +54,7 @@ export function Administracao() {
     <div>
       <CabecalhoPagina titulo="Administração" subtitulo="Gestão de servidores, estrutura administrativa, perfis de acesso e trilha de auditoria" />
       <div className="flex gap-1 mb-5 overflow-x-auto" style={{ borderBottom: "1px solid var(--line)" }}>
-        {([["usuarios", "Usuários", "usuario"], ["perfis", "Perfis de Acesso", "administracao"], ["unidades", "Unidades Administrativas", "organograma"], ["cargos", "Cargos e Funções", "area"], ["auditoria", "Registro de Auditoria", "relogio"]] as const).map(([k, r, ic]) => (
+        {([["usuarios", "Usuários", "usuario"], ["perfis", "Perfis de Acesso", "administracao"], ["unidades", "Unidades Administrativas", "organograma"], ["cargos", "Cargos e Funções", "area"], ["auditoria", "Registro de Auditoria", "relogio"], ["sistema", "Sistema e Licenciamento", "escudo"]] as const).map(([k, r, ic]) => (
           <button key={k} className={`tab-btn ${aba === k ? "on" : ""}`} onClick={() => setAba(k)}>
             <span className="inline-flex items-center gap-1.5"><Icon name={ic} size={14} /> {r}</span>
           </button>
@@ -229,6 +230,8 @@ export function Administracao() {
           </div>
         </Reveal>
       )}
+
+      {aba === "sistema" && <AdminSistema />}
 
       {aba === "auditoria" && (
         <Reveal>

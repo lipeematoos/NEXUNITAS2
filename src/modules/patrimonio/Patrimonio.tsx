@@ -1,16 +1,17 @@
 import { useMemo, useState } from "react";
 import { Avatar, Campo, Chip, Contador, Icon, Modal, PainelLateral, QrCode, Reveal, Seletor, StatusChamadoChip, Vazio, useToast } from "../../components/ui";
 import { CabecalhoPagina } from "../../components/shell";
-import { Ativo, CAMPOS_DINAMICOS, CATEGORIAS_ATIVO, STATUS_ATIVO } from "../../lib/data";
+import { Ativo, CAMPOS_DINAMICOS, CATEGORIAS_ATIVO, MOTIVOS_BAIXA, RESULTADOS_INVENTARIO, STATUS_ATIVO, camposFaltantes } from "../../lib/data";
 import { fmtData, fmtMoeda, fmtNum, tempoRel } from "../../lib/format";
 import { useApp } from "../../lib/store";
+import RelatoriosPatrimoniais, { pertencimentoEfetivo } from "./RelatoriosPatrimoniais";
 
-type Aba = "visao" | "equipamentos" | "movimentacoes" | "inventario" | "garantias";
+type Aba = "visao" | "equipamentos" | "movimentacoes" | "inventario" | "garantias" | "relatorios";
 
 const anosDe = (iso: string) => (Date.now() - new Date(iso).getTime()) / (365.25 * 86400000);
 
 export default function Patrimonio() {
-  const { ativos, usuarios, unidades, inventario, licencas, movimentarAtivo, registrarManutencao, alterarStatusAtivo, setResultadoInventario, config, chamados, temPermissao } = useApp();
+  const { ativos, usuarios, unidades, inventario, licencas, movimentarAtivo, registrarManutencao, alterarStatusAtivo, setResultadoInventario, config, chamados, temPermissao, baixarAtivo, fundos, gestoras } = useApp();
   const toast = useToast();
   const [aba, setAba] = useState<Aba>("visao");
   const [busca, setBusca] = useState("");
@@ -23,6 +24,8 @@ export default function Patrimonio() {
   const [man, setMan] = useState({ tipo: "Corretiva", descricao: "", diagnostico: "", solucao: "", pecas: "", custo: "", tempoMin: "45" });
   const [modalQr, setModalQr] = useState<Ativo | null>(null);
   const [modalTermo, setModalTermo] = useState<Ativo | null>(null);
+  const [modalBaixa, setModalBaixa] = useState<Ativo | null>(null);
+  const [baixa, setBaixa] = useState({ motivo: "Inservível", data: "", documento: "", processo: "", destino: "", obs: "" });
   const [abaDetalhe, setAbaDetalhe] = useState<"dados" | "rede" | "dominio" | "ip" | "historico">("dados");
 
   const nomeDe = (id: string | null) => usuarios.find((u) => u.id === id);
@@ -103,6 +106,22 @@ export default function Patrimonio() {
     setMan({ tipo: "Corretiva", descricao: "", diagnostico: "", solucao: "", pecas: "", custo: "", tempoMin: "45" });
   };
 
+  const salvarBaixa = () => {
+    if (!modalBaixa) return;
+    if (!baixa.documento.trim() && !baixa.processo.trim()) { toast("Informe o documento ou o processo administrativo", "vermelho"); return; }
+    baixarAtivo(modalBaixa.id, {
+      motivo: baixa.motivo,
+      data: baixa.data || new Date().toISOString().slice(0, 10),
+      documento: baixa.documento || "—",
+      processo: baixa.processo || "—",
+      destino: baixa.destino || "Almoxarifado — aguardando destinação",
+      obs: baixa.obs || "—",
+    });
+    toast("Baixa patrimonial registrada", "verde", `Patrimônio ${modalBaixa.patrimonio} — registro preservado com histórico`);
+    setModalBaixa(null);
+    setBaixa({ motivo: "Inservível", data: "", documento: "", processo: "", destino: "", obs: "" });
+  };
+
   const podeGerir = temPermissao("asset.manage");
   const campanha = inventario[0];
 
@@ -113,7 +132,7 @@ export default function Patrimonio() {
         subtitulo={`${fmtNum(ativos.length)} bens cadastrados · valor contábil ${fmtMoeda(ativos.reduce((s, a) => s + a.valor, 0), config.regional.moeda).replace(",00", "")} · inventário ${campanha?.nome ?? "—"}`}
       />
       <div className="flex gap-1 mb-5 overflow-x-auto" style={{ borderBottom: "1px solid var(--line)" }}>
-        {([["visao", "Visão Geral", "painel"], ["equipamentos", "Equipamentos", "caixa"], ["movimentacoes", "Movimentações", "seta-d"], ["inventario", "Inventário", "check"], ["garantias", "Garantias e Licenças", "escudo"]] as const).map(([k, r, ic]) => (
+        {([["visao", "Visão Geral", "painel"], ["equipamentos", "Equipamentos", "caixa"], ["movimentacoes", "Movimentações", "seta-d"], ["inventario", "Inventário", "check"], ["garantias", "Garantias e Licenças", "escudo"], ["relatorios", "Relatórios Institucionais", "relatorios"]] as const).map(([k, r, ic]) => (
           <button key={k} className={`tab-btn ${aba === k ? "on" : ""}`} onClick={() => setAba(k)}>
             <span className="inline-flex items-center gap-1.5"><Icon name={ic} size={14} /> {r}</span>
           </button>
@@ -313,7 +332,7 @@ export default function Patrimonio() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {[["Localizado", "var(--green)"], ["Movido", "var(--blue)"], ["Dados Divergentes", "var(--amber)"], ["Não Localizado", "var(--red)"], ["Em Manutenção", "var(--cyan)"], ["Baixado", "var(--grey)"]].map(([r, cor]) => (
+                  {[["Confirmado", "var(--green)"], ["Localização Divergente", "var(--blue)"], ["Responsável Divergente", "var(--cyan)"], ["Dados Divergentes", "var(--amber)"], ["Equipamento Adicional Encontrado", "var(--green)"], ["Não Localizado", "var(--red)"], ["Em Manutenção", "var(--cyan)"], ["Baixado", "var(--grey)"]].map(([r, cor]) => (
                     <span key={r} className="chip" style={{ background: `${cor}1e`, color: cor }}>{r}: {fmtNum(cont(r))}</span>
                   ))}
                 </div>
@@ -327,7 +346,7 @@ export default function Patrimonio() {
                     {campanha.itens.map((item) => {
                       const a = ativos.find((x) => x.id === item.patrimonioId);
                       if (!a) return null;
-                      const corRes: Record<string, string> = { "Localizado": "verde", "Movido": "azul", "Dados Divergentes": "ambar", "Não Localizado": "vermelho", "Em Manutenção": "ciano", "Baixado": "cinza" };
+                      const corRes: Record<string, string> = { "Confirmado": "verde", "Localização Divergente": "azul", "Responsável Divergente": "ciano", "Dados Divergentes": "ambar", "Equipamento Adicional Encontrado": "pinho", "Não Localizado": "vermelho", "Em Manutenção": "ciano", "Baixado": "cinza" };
                       return (
                         <tr key={item.patrimonioId}>
                           <td className="font-extrabold tabular-nums">{a.patrimonio}</td>
@@ -340,7 +359,7 @@ export default function Patrimonio() {
                               value={item.resultado}
                               onChange={(e) => { setResultadoInventario(campanha.id, item.patrimonioId, e.target.value); toast("Resultado atualizado", "verde", `${a.patrimonio}: ${e.target.value}`); }}
                             >
-                              {["Localizado", "Não Localizado", "Movido", "Dados Divergentes", "Em Manutenção", "Baixado"].map((r) => <option key={r}>{r}</option>)}
+                              {RESULTADOS_INVENTARIO.map((r) => <option key={r}>{r}</option>)}
                             </select>
                           </td>
                         </tr>
@@ -424,6 +443,9 @@ export default function Patrimonio() {
         </div>
       )}
 
+      {/* ===== Relatórios institucionais ===== */}
+      {aba === "relatorios" && <RelatoriosPatrimoniais />}
+
       {/* ===== Drawer de detalhe ===== */}
       <PainelLateral aberto={!!selecionado} onFechar={() => setSelecionadoId(null)}
         titulo={selecionado ? <span className="flex items-center gap-2.5"><span className="tabular-nums" style={{ color: "var(--muted)", fontSize: 12 }}>Patrimônio {selecionado.patrimonio}</span><StatusChamadoChip s={selecionado.status} /></span> : ""}>
@@ -432,7 +454,13 @@ export default function Patrimonio() {
             <div className="flex items-start gap-4">
               <div className="flex-1 min-w-0">
                 <h3 className="font-display font-bold text-[18px] m-0">{selecionado.fabricante} {selecionado.modelo}</h3>
-                <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>{selecionado.categoria} · série {selecionado.serie} · adquirido em {fmtData(selecionado.aquisicao)} por {fmtMoeda(selecionado.valor, config.regional.moeda)}</div>
+                <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>{selecionado.categoria} · série {selecionado.serie || "não informada"} · {selecionado.aquisicao ? `adquirido em ${fmtData(selecionado.aquisicao)}` : "data de aquisição não informada"} · {fmtMoeda(selecionado.valor, config.regional.moeda)}</div>
+                {(() => {
+                  const faltam = camposFaltantes(selecionado);
+                  return faltam.length === 0
+                    ? <Chip tom="verde" dot={false}>Cadastro Completo</Chip>
+                    : <span title={`Pendências: ${faltam.join(", ")}`}><Chip tom="ambar" dot={false}>Cadastro Incompleto — {faltam.length} pendência{faltam.length > 1 ? "s" : ""}</Chip></span>;
+                })()}
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   <Chip tom="cinza" dot={false}>{selecionado.predio} · {selecionado.sala}</Chip>
                   <Chip tom="cinza" dot={false}>{unidadeDe(selecionado.unidadeId)?.sigla}</Chip>
@@ -450,6 +478,44 @@ export default function Patrimonio() {
 
             {abaDetalhe === "dados" && (
               <div className="space-y-3 anim-fade">
+                {(() => {
+                  const p = pertencimentoEfetivo(selecionado, unidades, (id) => unidades.find((u) => u.id === id));
+                  const unDe = (id: string | null) => unidades.find((u) => u.id === id);
+                  const unidadesGestora = (id: string) => gestoras.find((g) => g.id === id)?.sigla ?? "—";
+                  return (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg p-3.5 col-span-2 sm:col-span-1" style={{ background: "var(--yellow-soft)", border: "1px solid rgba(242,183,10,0.4)" }}>
+                        <div className="text-[9.5px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--accent-ink)" }}>Pertencimento Patrimonial</div>
+                        <div className="space-y-1 text-[11.5px]">
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Órgão</span><strong className="text-right">{unDe(p.orgaoId)?.sigla ?? "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Unidade gestora</span><strong className="text-right">{unidadesGestora(p.gestoraId)}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Fundo vinculado</span><strong className="text-right">{p.fundoId ? fundos.find((f) => f.id === p.fundoId)?.sigla ?? "—" : "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Secretaria proprietária</span><strong className="text-right">{unDe(p.secretariaId)?.sigla ?? "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Departamento</span><strong className="text-right">{p.departamentoId ? unDe(p.departamentoId)?.sigla : "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Centro de custo</span><strong className="text-right">{p.centroCusto ?? "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Responsável patrimonial</span><strong className="text-right">{p.responsavelPatrimonialId ? nomeDe(p.responsavelPatrimonialId)?.nome.split(" ")[0] : "—"}</strong></div>
+                        </div>
+                      </div>
+                      <div className="rounded-lg p-3.5 col-span-2 sm:col-span-1" style={{ background: "var(--blue-soft)", border: "1px solid rgba(32,101,159,0.3)" }}>
+                        <div className="text-[9.5px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--blue)" }}>Localização Atual</div>
+                        <div className="space-y-1 text-[11.5px]">
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Onde está</span><strong className="text-right">{unDe(selecionado.unidadeId)?.sigla ?? "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Prédio</span><strong className="text-right">{selecionado.predio || "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Andar</span><strong className="text-right">{selecionado.localizacaoFisica?.andar ?? "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Sala</span><strong className="text-right">{selecionado.sala || "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Complemento</span><strong className="text-right">{selecionado.localizacaoFisica?.complemento ?? "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Usuário responsável</span><strong className="text-right">{selecionado.responsavelId ? nomeDe(selecionado.responsavelId)?.nome.split(" ")[0] : "—"}</strong></div>
+                          <div className="flex justify-between gap-2"><span style={{ color: "var(--muted)" }}>Matrícula</span><strong className="text-right">{selecionado.responsavelId ? nomeDe(selecionado.responsavelId)?.matricula : "—"}</strong></div>
+                        </div>
+                      </div>
+                      {p.secretariaId !== selecionado.unidadeId && (
+                        <p className="col-span-2 text-[10.5px] m-0 flex gap-1.5 items-start" style={{ color: "var(--muted)" }}>
+                          <Icon name="info" size={12} className="mt-0.5 flex-none" /> Pertencimento e localização são distintos: o bem pertence a {unDe(p.secretariaId)?.sigla}, mas está fisicamente em {unDe(selecionado.unidadeId)?.sigla}. Movimentações não alteram a propriedade.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
                 {(CAMPOS_DINAMICOS[selecionado.categoria] ?? []).length > 0 && (
                   <div>
                     <div className="ovl mb-2">Campos técnicos — {selecionado.categoria}</div>
@@ -572,6 +638,17 @@ export default function Patrimonio() {
                   </ol>
                 </div>
                 <button className="btn btn-outline w-full" onClick={() => setModalTermo(selecionado)}><Icon name="documentos" size={15} /> Termo de Responsabilidade</button>
+                {podeGerir && selecionado.status !== "Baixado" && (
+                  <button className="btn btn-outline w-full" style={{ color: "var(--red)", borderColor: "var(--red)" }}
+                    onClick={() => { setModalBaixa(selecionado); setBaixa({ motivo: "Inservível", data: "", documento: "", processo: "", destino: "", obs: "" }); }}>
+                    <Icon name="excluir" size={15} /> Baixa de Equipamento
+                  </button>
+                )}
+                {selecionado.status === "Baixado" && selecionado.baixa && (
+                  <div className="rounded-lg px-3.5 py-3 text-[11.5px]" style={{ background: "var(--red-soft)", color: "var(--red)" }}>
+                    <strong>Baixado em {fmtData(selecionado.baixa.data)}</strong> — {selecionado.baixa.motivo} · {selecionado.baixa.documento} · Processo {selecionado.baixa.processo}. O registro é permanente e nunca é excluído.
+                  </div>
+                )}
                 {(() => {
                   const chs = chamados.filter((c) => c.patrimonioId === selecionado.id);
                   return chs.length > 0 ? (
@@ -592,6 +669,27 @@ export default function Patrimonio() {
           </div>
         )}
       </PainelLateral>
+
+      {/* ===== Modal de baixa ===== */}
+      <Modal aberto={!!modalBaixa} onFechar={() => setModalBaixa(null)} titulo={`Baixa de Equipamento — Patrimônio ${modalBaixa?.patrimonio || "(sem número)"}`} largo
+        rodape={<><button className="btn btn-outline" onClick={() => setModalBaixa(null)}>Cancelar</button><button className="btn btn-danger" onClick={salvarBaixa}><Icon name="excluir" size={15} /> Confirmar baixa</button></>}>
+        <div className="space-y-4">
+          <div className="rounded-lg px-4 py-3 text-[12px] flex gap-2" style={{ background: "var(--red-soft)", color: "var(--red)" }}>
+            <Icon name="aviso" size={15} className="flex-none mt-0.5" />
+            <span>A baixa é <strong>definitiva e auditada</strong>: o status passa para “Baixado”, o histórico é preservado e o equipamento permanece na base consolidada para prestação de contas. Nenhum registro é excluído fisicamente.</span>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Seletor rotulo="Motivo da baixa" obrigatorio valor={baixa.motivo} onChange={(v) => setBaixa({ ...baixa, motivo: v })} opcoes={MOTIVOS_BAIXA} />
+            <Campo rotulo="Data da baixa"><input className="input" type="date" value={baixa.data} onChange={(e) => setBaixa({ ...baixa, data: e.target.value })} /></Campo>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Campo rotulo="Documento (termo/laudo)" obrigatorio><input className="input" placeholder="ex.: Termo de Baixa nº 2026-018" value={baixa.documento} onChange={(e) => setBaixa({ ...baixa, documento: e.target.value })} /></Campo>
+            <Campo rotulo="Processo administrativo"><input className="input" placeholder="ex.: PROC-2026-4412" value={baixa.processo} onChange={(e) => setBaixa({ ...baixa, processo: e.target.value })} /></Campo>
+          </div>
+          <Campo rotulo="Destinação"><input className="input" placeholder="ex.: Alienação por leilão / descarte ecológico" value={baixa.destino} onChange={(e) => setBaixa({ ...baixa, destino: e.target.value })} /></Campo>
+          <Campo rotulo="Observações"><textarea className="textarea" rows={2} value={baixa.obs} onChange={(e) => setBaixa({ ...baixa, obs: e.target.value })} /></Campo>
+        </div>
+      </Modal>
 
       {/* ===== Modais ===== */}
       <Modal aberto={!!modalMov} onFechar={() => setModalMov(null)} titulo={`Movimentar Patrimônio ${modalMov?.patrimonio ?? ""}`}

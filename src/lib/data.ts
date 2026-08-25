@@ -74,8 +74,11 @@ export interface Usuario {
 }
 export interface Unidade {
   id: string; nome: string; sigla: string;
-  tipo: "Órgão" | "Secretaria" | "Departamento" | "Divisão" | "Setor";
+  tipo: string;
   parentId: string | null; responsavelId?: string; ramal?: string;
+  gestoraId?: string; fundoId?: string; endereco?: string; telefone?: string;
+  temEquipePropria?: boolean; dominioId?: string; grupoPrincipalId?: string;
+  aplicarAtendimentoSubordinadas?: boolean; slaPadrao?: string; grupoEscalonamentoId?: string;
 }
 export interface Equipe { id: string; nome: string; unidadeId: string; liderId: string; membroIds: string[]; especialidades: string[]; }
 export interface Projeto {
@@ -118,8 +121,8 @@ export const UNIDADES_SEED: Unidade[] = [
   { id: "un0", nome: "Prefeitura Municipal de Cidade Exemplo", sigla: "PMCE", tipo: "Órgão", parentId: null, ramal: "6000" },
   { id: "un1", nome: "Secretaria Municipal de Administração", sigla: "SEAD", tipo: "Secretaria", parentId: "un0", responsavelId: "u2", ramal: "6100" },
   { id: "un2", nome: "Secretaria Municipal de Fazenda", sigla: "SEFAZ", tipo: "Secretaria", parentId: "un0", responsavelId: "u9", ramal: "6200" },
-  { id: "un3", nome: "Secretaria Municipal de Educação", sigla: "SEMED", tipo: "Secretaria", parentId: "un0", responsavelId: "u10", ramal: "6300" },
-  { id: "un4", nome: "Secretaria Municipal de Saúde", sigla: "SESAU", tipo: "Secretaria", parentId: "un0", responsavelId: "u11", ramal: "6400" },
+  { id: "un3", nome: "Secretaria Municipal de Educação", sigla: "SEMED", tipo: "Secretaria", parentId: "un0", responsavelId: "u10", ramal: "6300", gestoraId: "ug3", fundoId: "fm2", temEquipePropria: true, dominioId: "dom3", grupoPrincipalId: "g9", aplicarAtendimentoSubordinadas: true, endereco: "Rua das Escolas, 45", telefone: "(11) 4002-6300" },
+  { id: "un4", nome: "Secretaria Municipal de Saúde", sigla: "SESAU", tipo: "Secretaria", parentId: "un0", responsavelId: "u11", ramal: "6400", gestoraId: "ug2", fundoId: "fm1", temEquipePropria: true, dominioId: "dom2", grupoPrincipalId: "g7", aplicarAtendimentoSubordinadas: true, endereco: "Av. da Saúde, 200", telefone: "(11) 4002-6400" },
   { id: "un5", nome: "Secretaria Municipal de Turismo", sigla: "SETUR", tipo: "Secretaria", parentId: "un0", responsavelId: "u12", ramal: "6500" },
   { id: "un6", nome: "Secretaria Municipal de Obras", sigla: "SEOB", tipo: "Secretaria", parentId: "un0", responsavelId: "u13", ramal: "6600" },
   { id: "un11", nome: "Departamento de Tecnologia da Informação", sigla: "DTI", tipo: "Departamento", parentId: "un1", responsavelId: "u2", ramal: "6110" },
@@ -488,7 +491,13 @@ export const CATEGORIAS_PORTAL: CategoriaPortal[] = [
   { id: "cat13", nome: "Outros", icone: "info", descricao: "Demais atendimentos de TI" },
 ];
 
-export interface GrupoSuporte { id: string; nome: string; membroIds: string[]; }
+export interface GrupoSuporte {
+  id: string; nome: string; membroIds: string[];
+  dominioId?: string; sigla?: string; gestorId?: string; horario?: string;
+  estrategiaAtribuicao?: "Manual" | "Round Robin" | "Menor número de chamados ativos" | "Técnico padrão do serviço";
+  permiteAtribAuto?: boolean; permiteSelecaoTecnico?: "Não" | "Opcional" | "Obrigatório" | "Somente Gestores";
+  categoriasAtendidas?: string[];
+}
 export const GRUPOS_SUPORTE_SEED: GrupoSuporte[] = [
   { id: "g1", nome: "Suporte Técnico", membroIds: ["u5"] },
   { id: "g2", nome: "Infraestrutura", membroIds: ["u4"] },
@@ -549,6 +558,8 @@ export const REGRAS_APROVACAO_SEED: RegraAprovacao[] = [
 export interface Servico {
   id: string; nome: string; categoriaId: string; grupoId: string; descricao: string;
   requerAprovacao: boolean; regraAprovacaoId: string | null; prioridadePadrao: string;
+  selecaoTecnico?: "Não" | "Opcional" | "Obrigatório" | "Somente Gestores";
+  tecnicoPreferencialId?: string | null;
 }
 export const SERVICOS_SEED: Servico[] = [
   { id: "sv1", nome: "Criar Usuário", categoriaId: "cat4", grupoId: "g4", descricao: "Cadastro de novo servidor nos sistemas municipais, com perfil inicial padrão.", requerAprovacao: true, regraAprovacaoId: "ra1", prioridadePadrao: "Normal" },
@@ -575,6 +586,11 @@ export interface Chamado {
   tecnicoId: string | null; grupoId: string | null; patrimonioId: string | null;
   criadoEm: string; prazoResolucao: string;
   aprovacoes: DecisaoAprovacao[]; historico: HistoricoItem[]; comentarios: ComentarioChamado[];
+  roteamento?: RegistroRoteamento[]; tecnicoPreferencialId?: string | null;
+}
+export interface RegistroRoteamento {
+  data: string; regra: string; detalhe: string; dominio: string; grupo: string;
+  tecnico?: string; automatico: boolean;
 }
 
 export const CHAMADOS_SEED: Chamado[] = [
@@ -803,15 +819,80 @@ export const STATUS_ATIVO: { label: string; tom: Tom; hex: string }[] = [
   { label: "Em Uso", tom: "verde", hex: "#1e7a54" },
   { label: "Emprestado", tom: "ambar", hex: "#b4690e" },
   { label: "Em Manutenção", tom: "ambar", hex: "#8f5409" },
+  { label: "Aguardando Manutenção", tom: "ambar", hex: "#8f5409" },
   { label: "Reserva", tom: "pinho", hex: "#0e4a2f" },
   { label: "Obsoleto", tom: "vermelho", hex: "#96331e" },
+  { label: "Inservível", tom: "vermelho", hex: "#96331e" },
+  { label: "Não Localizado", tom: "vermelho", hex: "#7d1f0e" },
   { label: "Baixado", tom: "cinza", hex: "#4d5c53" },
 ];
 
 export const CATEGORIAS_ATIVO = [
   "Desktop", "Notebook", "Monitor", "Impressora", "Switch", "Roteador", "Access Point", "Servidor",
   "Nobreak", "Smartphone", "Tablet", "Telefone IP", "Scanner", "Storage", "Firewall", "Periférico",
+  "Projetor", "Câmera", "DVR", "NVR", "Rack", "Equipamento de Videomonitoramento", "Equipamento de Telecomunicação", "Outro Equipamento de TI",
 ];
+
+export const MOTIVOS_BAIXA = ["Inservível", "Alienação", "Doação", "Perda", "Furto", "Descarte", "Substituição", "Outro"];
+
+export const RESULTADOS_INVENTARIO = [
+  "Confirmado", "Não Localizado", "Localização Divergente", "Responsável Divergente",
+  "Dados Divergentes", "Equipamento Adicional Encontrado", "Em Manutenção", "Baixado",
+];
+
+/** Critérios de obsolescência por categoria — configuráveis pelo administrador. */
+export const REGRAS_OBSOLESCENCIA_SEED: { categoria: string; anos: number }[] = [
+  { categoria: "Desktop", anos: 6 }, { categoria: "Notebook", anos: 5 }, { categoria: "Switch", anos: 8 },
+  { categoria: "Impressora", anos: 6 }, { categoria: "Servidor", anos: 10 }, { categoria: "Monitor", anos: 8 },
+  { categoria: "Storage", anos: 7 }, { categoria: "Nobreak", anos: 6 }, { categoria: "_padrao", anos: 6 },
+];
+
+/** Campos obrigatórios por categoria para considerar o cadastro completo. */
+export const CAMPOS_OBRIGATORIOS: Record<string, { chave: string; rotulo: string }[]> = {
+  _padrao: [
+    { chave: "patrimonio", rotulo: "Número de Patrimônio" }, { chave: "serie", rotulo: "Número de Série" },
+    { chave: "fabricante", rotulo: "Fabricante" }, { chave: "modelo", rotulo: "Modelo" },
+  ],
+  Desktop: [
+    { chave: "patrimonio", rotulo: "Número de Patrimônio" }, { chave: "serie", rotulo: "Número de Série" },
+    { chave: "fabricante", rotulo: "Fabricante" }, { chave: "modelo", rotulo: "Modelo" },
+    { chave: "responsavel", rotulo: "Responsável" }, { chave: "localizacao", rotulo: "Localização" },
+  ],
+  Switch: [
+    { chave: "patrimonio", rotulo: "Número de Patrimônio" }, { chave: "serie", rotulo: "Número de Série" },
+    { chave: "fabricante", rotulo: "Fabricante" }, { chave: "modelo", rotulo: "Modelo" },
+    { chave: "ipGerencia", rotulo: "IP de Gerenciamento" },
+  ],
+  Servidor: [
+    { chave: "patrimonio", rotulo: "Número de Patrimônio" }, { chave: "serie", rotulo: "Número de Série" },
+    { chave: "fabricante", rotulo: "Fabricante" }, { chave: "modelo", rotulo: "Modelo" },
+    { chave: "ipGerencia", rotulo: "Endereço de rede" }, { chave: "responsavel", rotulo: "Responsável" },
+  ],
+};
+
+export function camposFaltantes(a: Ativo): string[] {
+  const req = CAMPOS_OBRIGATORIOS[a.categoria] ?? CAMPOS_OBRIGATORIOS._padrao;
+  const faltam: string[] = [];
+  for (const c of req) {
+    if (c.chave === "patrimonio" && !a.patrimonio) faltam.push(c.rotulo);
+    else if (c.chave === "serie" && !a.serie) faltam.push(c.rotulo);
+    else if (c.chave === "fabricante" && !a.fabricante) faltam.push(c.rotulo);
+    else if (c.chave === "modelo" && !a.modelo) faltam.push(c.rotulo);
+    else if (c.chave === "responsavel" && !a.responsavelId) faltam.push(c.rotulo);
+    else if (c.chave === "localizacao" && !a.sala) faltam.push(c.rotulo);
+    else if (c.chave === "ipGerencia" && !a.rede?.ipv4 && !(a.campos.ipGerencia ?? a.campos.ipRede)) faltam.push(c.rotulo);
+    else if (c.chave === "responsavel" && !a.responsavelId) faltam.push(c.rotulo);
+  }
+  return faltam;
+}
+
+/** Pertencimento patrimonial explícito (demonstração de propriedade × localização distintas). */
+export const PERTENCIMENTO_EXPLICITO: Record<string, Pertencimento> = {
+  at1: { orgaoId: "un0", gestoraId: "ug1", fundoId: null, secretariaId: "un1", departamentoId: "un11", centroCusto: "CC-0110", responsavelPatrimonialId: "u2" },
+  at2: { orgaoId: "un0", gestoraId: "ug1", fundoId: null, secretariaId: "un1", departamentoId: "un11", centroCusto: "CC-0110", responsavelPatrimonialId: "u2" },
+  at12: { orgaoId: "un0", gestoraId: "ug1", fundoId: null, secretariaId: "un1", departamentoId: "un11", centroCusto: "CC-0110", responsavelPatrimonialId: "u5" },
+  at13: { orgaoId: "un0", gestoraId: "ug1", fundoId: null, secretariaId: "un1", departamentoId: "un11", centroCusto: "CC-0110", responsavelPatrimonialId: null },
+};
 
 /** Campos técnicos dinâmicos por categoria (configuráveis pelo administrador). */
 export const CAMPOS_DINAMICOS: Record<string, { chave: string; rotulo: string }[]> = {
@@ -835,6 +916,15 @@ export interface HistoricoIP { ipv4: string; hostname: string; mac: string; vlan
 export interface Movimentacao { origem: string; destino: string; responsavelAnterior: string; novoResponsavel: string; data: string; usuario: string; motivo: string; }
 export interface Manutencao { id: string; tecnicoId: string; data: string; tipo: "Preventiva" | "Corretiva"; descricao: string; diagnostico: string; solucao: string; pecas: string; custo: number; chamadoId: string | null; tempoMin: number; }
 
+export interface Pertencimento {
+  orgaoId: string; gestoraId: string; fundoId: string | null;
+  secretariaId: string; departamentoId: string | null;
+  centroCusto: string | null; responsavelPatrimonialId: string | null;
+}
+export interface InfoBaixa {
+  motivo: string; data: string; documento: string; processo: string;
+  destino: string; obs: string; usuario: string;
+}
 export interface Ativo {
   id: string; patrimonio: string; codigoInterno: string; serie: string; categoria: string;
   fabricante: string; modelo: string; aquisicao: string; valor: number; notaFiscal: string;
@@ -842,6 +932,9 @@ export interface Ativo {
   unidadeId: string; responsavelId: string | null; predio: string; sala: string;
   campos: Record<string, string>; rede: InfoRede | null;
   historicoIP: HistoricoIP[]; movimentacoes: Movimentacao[]; manutencoes: Manutencao[];
+  pertencimento?: Pertencimento; baixa?: InfoBaixa | null;
+  localizacaoFisica?: { andar?: string; endereco?: string; complemento?: string };
+  dataCadastro?: string; processoCompra?: string; fonteRecurso?: string; subcategoria?: string;
 }
 
 const ipHist = (rows: [string, string, string, string, number, HistoricoIP["origem"]][]): HistoricoIP[] =>
@@ -1071,7 +1164,8 @@ export const ATIVOS_SEED: Ativo[] = [
 
 export interface CampanhaInventario {
   id: string; nome: string; periodo: string; responsavelId: string;
-  itens: { patrimonioId: string; resultado: "Localizado" | "Não Localizado" | "Movido" | "Dados Divergentes" | "Em Manutenção" | "Baixado" }[];
+  itens: { patrimonioId: string; resultado: string }[];
+  historico?: { patrimonioId: string; resultado: string; usuario: string; data: string; obs?: string }[];
 }
 export const INVENTARIO_SEED: CampanhaInventario[] = [
   {
@@ -1107,4 +1201,149 @@ export const BASE_CONHECIMENTO_SEED: ArtigoBase[] = [
   { id: "kb4", titulo: "Como solicitar acesso a um sistema", categoria: "Acesso a Sistemas", conteudo: "1. Acesse a Central de Serviços de TI e escolha o serviço “Solicitar Acesso”.\n2. Informe o sistema, o perfil desejado e a justificativa.\n3. A solicitação passará pela aprovação do gestor da sua secretaria.\n4. Você será notificado no GovFlow quando o acesso for concedido.\n\nPerfis administrativos exigem aprovação adicional da Segurança da Informação.", autorId: "u1", status: "Publicado", visibilidade: "Todos", atualizadoEm: isoRel(-15) },
   { id: "kb5", titulo: "Procedimento de backup dos servidores", categoria: "Infraestrutura", conteudo: "Rotina diária: 22h — snapshot das VMs críticas (RTO 4h / RPO 24h).\nRotina semanal: domingo 01h — cópia completa para o NAS-BACKUP-01.\nMensal: fita LTO enviada ao cofre da agência central.\n\nA verificação de integridade é automática e gera alerta no canal #infraestrutura em caso de falha.", autorId: "u4", status: "Publicado", visibilidade: "Somente TI", atualizadoEm: isoRel(-60) },
   { id: "kb6", titulo: "Checklist de recebimento de equipamentos", categoria: "Patrimônio", conteudo: "1. Conferir nota fiscal × ordem de fornecimento.\n2. Registrar número de série e patrimônio no GovFlow.\n3. Aplicar etiqueta patrimonial e QR Code.\n4. Instalar imagem corporativa e ingressar no domínio.\n5. Gerar termo de responsabilidade e coletar assinatura.", autorId: "u5", status: "Rascunho", visibilidade: "Somente TI", atualizadoEm: isoRel(-5) },
+];
+
+/* ===================== Roteamento de atendimento de TI ===================== */
+
+export interface UnidadeGestora { id: string; nome: string; sigla: string; codigo: string; unidadeId: string; gestorId: string; }
+export const UNIDADES_GESTORAS_SEED: UnidadeGestora[] = [
+  { id: "ug1", nome: "Prefeitura Municipal de Cidade Exemplo", sigla: "PMCE", codigo: "UG-001", unidadeId: "un0", gestorId: "u2" },
+  { id: "ug2", nome: "Fundo Municipal de Saúde", sigla: "FMS", codigo: "UG-002", unidadeId: "un4", gestorId: "u11" },
+  { id: "ug3", nome: "Fundo Municipal de Educação", sigla: "FME", codigo: "UG-003", unidadeId: "un3", gestorId: "u10" },
+];
+
+export interface FundoMunicipal { id: string; nome: string; sigla: string; codigo: string; unidadeId: string; gestorId: string; ativo: boolean; }
+export const FUNDOS_SEED: FundoMunicipal[] = [
+  { id: "fm1", nome: "Fundo Municipal de Saúde", sigla: "FMS", codigo: "FM-002", unidadeId: "un4", gestorId: "u11", ativo: true },
+  { id: "fm2", nome: "Fundo Municipal de Educação", sigla: "FME", codigo: "FM-003", unidadeId: "un3", gestorId: "u10", ativo: true },
+];
+
+export interface TipoUnidade { id: string; nome: string; codigo: string; ordem: number; ativo: boolean; }
+export const TIPOS_UNIDADE_SEED: TipoUnidade[] = [
+  { id: "tu1", nome: "Prefeitura", codigo: "PREF", ordem: 1, ativo: true },
+  { id: "tu2", nome: "Secretaria", codigo: "SEC", ordem: 2, ativo: true },
+  { id: "tu3", nome: "Secretaria Especial", codigo: "SECE", ordem: 3, ativo: true },
+  { id: "tu4", nome: "Autarquia", codigo: "AUT", ordem: 4, ativo: true },
+  { id: "tu5", nome: "Fundação", codigo: "FUND", ordem: 5, ativo: true },
+  { id: "tu6", nome: "Fundo Municipal", codigo: "FM", ordem: 6, ativo: true },
+  { id: "tu7", nome: "Diretoria", codigo: "DIR", ordem: 7, ativo: true },
+  { id: "tu8", nome: "Departamento", codigo: "DEP", ordem: 8, ativo: true },
+  { id: "tu9", nome: "Coordenadoria", codigo: "COORD", ordem: 9, ativo: true },
+  { id: "tu10", nome: "Divisão", codigo: "DIV", ordem: 10, ativo: true },
+  { id: "tu11", nome: "Setor", codigo: "SET", ordem: 11, ativo: true },
+  { id: "tu12", nome: "Núcleo", codigo: "NUC", ordem: 12, ativo: true },
+  { id: "tu13", nome: "Unidade Escolar", codigo: "UE", ordem: 13, ativo: true },
+  { id: "tu14", nome: "Unidade de Saúde", codigo: "US", ordem: 14, ativo: true },
+  { id: "tu15", nome: "Hospital", codigo: "HOSP", ordem: 15, ativo: true },
+  { id: "tu16", nome: "UBS", codigo: "UBS", ordem: 16, ativo: true },
+  { id: "tu17", nome: "Almoxarifado", codigo: "ALM", ordem: 17, ativo: true },
+  { id: "tu18", nome: "Outro", codigo: "OUT", ordem: 18, ativo: true },
+];
+
+export interface DominioAtendimento { id: string; nome: string; descricao: string; unidadeId: string; gestoraId: string; gestorId: string; ativo: boolean; }
+export const DOMINIOS_SEED: DominioAtendimento[] = [
+  { id: "dom1", nome: "TI Corporativa", descricao: "Domínio central de tecnologia — atende Administração, Fazenda, Obras, Turismo e órgãos sem equipe própria.", unidadeId: "un11", gestoraId: "ug1", gestorId: "u2", ativo: true },
+  { id: "dom2", nome: "TI Saúde", descricao: "Domínio próprio da Secretaria de Saúde, vinculado ao Fundo Municipal de Saúde. Atende SESAU e unidades subordinadas (UBS, hospitais, vigilância).", unidadeId: "un4", gestoraId: "ug2", gestorId: "u11", ativo: true },
+  { id: "dom3", nome: "TI Educação", descricao: "Domínio próprio da Secretaria de Educação. Atende SEMED, escolas e unidades pedagógicas.", unidadeId: "un3", gestoraId: "ug3", gestorId: "u10", ativo: true },
+];
+
+/** Grupos adicionais (domínios próprios de Saúde e Educação) — somados aos grupos corporativos. */
+export const GRUPOS_EXTRAS_SEED: GrupoSuporte[] = [
+  { id: "g7", nome: "Suporte TI Saúde", sigla: "STS", membroIds: ["u5", "u6"], dominioId: "dom2", gestorId: "u11", horario: "Seg a sex, 7h às 19h", estrategiaAtribuicao: "Menor número de chamados ativos", permiteAtribAuto: true, permiteSelecaoTecnico: "Opcional", categoriasAtendidas: ["Computador e Notebook", "Impressoras", "Internet e Rede"] },
+  { id: "g8", nome: "Sistemas Saúde", sigla: "SIS-S", membroIds: ["u6"], dominioId: "dom2", gestorId: "u11", horario: "Seg a sex, 8h às 18h", estrategiaAtribuicao: "Técnico padrão do serviço", permiteAtribAuto: true, permiteSelecaoTecnico: "Somente Gestores", categoriasAtendidas: ["Sistemas", "Acesso a Sistemas"] },
+  { id: "g9", nome: "Suporte TI Educação", sigla: "STE", membroIds: ["u5"], dominioId: "dom3", gestorId: "u10", horario: "Seg a sex, 8h às 17h", estrategiaAtribuicao: "Round Robin", permiteAtribAuto: true, permiteSelecaoTecnico: "Não", categoriasAtendidas: ["Computador e Notebook", "Wi-Fi"] },
+];
+
+export interface CoberturaAtendimento { id: string; grupoId: string; unidadeId: string; incluirSubordinadas: boolean; prioridade: number; ativa: boolean; }
+export const COBERTURAS_SEED: CoberturaAtendimento[] = [
+  { id: "cb1", grupoId: "g7", unidadeId: "un4", incluirSubordinadas: true, prioridade: 10, ativa: true },
+  { id: "cb2", grupoId: "g9", unidadeId: "un3", incluirSubordinadas: true, prioridade: 10, ativa: true },
+  { id: "cb3", grupoId: "g1", unidadeId: "un1", incluirSubordinadas: true, prioridade: 20, ativa: true },
+];
+
+export type CondicaoRoteamento = "Serviço" | "Unidade Administrativa" | "Categoria" | "Unidade + Categoria";
+export interface RegraRoteamento {
+  id: string; nome: string; condicaoTipo: CondicaoRoteamento; condicaoValor: string;
+  condicaoExtra: string | null; grupoId: string; prioridade: number; ativa: boolean;
+}
+export const REGRAS_ROTEAMENTO_SEED: RegraRoteamento[] = [
+  { id: "rr1", nome: "Portal da Transparência → Sistemas Corporativos", condicaoTipo: "Serviço", condicaoValor: "sv12", condicaoExtra: null, grupoId: "g4", prioridade: 10, ativa: true },
+  { id: "rr2", nome: "Sistemas × Saúde → Sistemas Saúde", condicaoTipo: "Unidade + Categoria", condicaoValor: "cat5", condicaoExtra: "un4", grupoId: "g8", prioridade: 20, ativa: true },
+  { id: "rr3", nome: "SEFAZ → Suporte Técnico (regra explícita)", condicaoTipo: "Unidade Administrativa", condicaoValor: "un2", condicaoExtra: null, grupoId: "g1", prioridade: 30, ativa: true },
+];
+
+export interface ResponsavelGlobal { id: string; servicoId: string; tecnicoId: string; grupoId: string; cobertura: string; ativo: boolean; }
+export const RESPONSAVEIS_GLOBAIS_SEED: ResponsavelGlobal[] = [
+  { id: "rg1", servicoId: "sv11", tecnicoId: "u6", grupoId: "g4", cobertura: "Toda a Organização", ativo: true },
+];
+
+/** Serviços adicionais — somados ao catálogo corporativo. */
+export const SERVICOS_EXTRAS_SEED: Servico[] = [
+  { id: "sv11", nome: "Suporte ao Sistema Tributário", categoriaId: "cat5", grupoId: "g4", descricao: "Atendimento ao sistema de arrecadação e tributação, com responsável global dedicado para toda a organização.", requerAprovacao: false, regraAprovacaoId: null, prioridadePadrao: "Alta", selecaoTecnico: "Obrigatório", tecnicoPreferencialId: "u6" },
+  { id: "sv12", nome: "Suporte ao Portal da Transparência", categoriaId: "cat5", grupoId: "g4", descricao: "Publicação de dados, correções e acessos administrativos do Portal da Transparência.", requerAprovacao: false, regraAprovacaoId: null, prioridadePadrao: "Normal", selecaoTecnico: "Opcional", tecnicoPreferencialId: "u1" },
+];
+
+/* ===================== Licenciamento ===================== */
+
+export interface LicencaSistema {
+  produto: string; organizacao: string; instalacaoId: string; tipo: string;
+  ativacao: string; validade: string; status: "Ativa" | "Período de Tolerância" | "Expirada" | "Suspensa" | "Revogada";
+  modulos: string[]; ultimaValidacao: string; toleranciaDias: number; assinatura: string;
+}
+export const LICENCA_SEED: LicencaSistema = {
+  produto: "GovFlow — Plataforma Integrada de Gestão",
+  organizacao: "Prefeitura Municipal de Cidade Exemplo",
+  instalacaoId: "GF-7F41-92AC-8B23",
+  tipo: "Licença perpétua com manutenção anual",
+  ativacao: isoRel(-320), validade: isoData(210), status: "Ativa",
+  modulos: ["Núcleo (Organização, Usuários, Projetos)", "Comunicação", "Central de Serviços", "Patrimônio de TI", "Relatórios Avançados"],
+  ultimaValidacao: isoRel(-2), toleranciaDias: 30,
+  assinatura: "ED25519::8f4aKj2…demonstração",
+};
+export interface EventoLicenca { id: string; data: string; evento: string; status: string; origem: string; detalhe: string; }
+export const EVENTOS_LICENCA_SEED: EventoLicenca[] = [
+  { id: "evl1", data: isoRel(-320, 9, 15), evento: "Ativação da licença", status: "Ativa", origem: "Arquivo govflow-license.lic", detalhe: "Assinatura verificada com a chave pública embutida." },
+  { id: "evl2", data: isoRel(-60, 6, 0), evento: "Validação periódica", status: "Ativa", origem: "Servidor de licenciamento", detalhe: "Validação online concluída sem pendências." },
+  { id: "evl3", data: isoRel(-2, 6, 0), evento: "Validação periódica", status: "Ativa", origem: "Servidor de licenciamento", detalhe: "Validação online concluída sem pendências." },
+];
+
+export interface SnapshotRelatorio { id: string; nome: string; data: string; filtros: string; total: number; usuario: string; hash: string; }
+
+/* ===================== Ativos adicionais (qualidade de dados) ===================== */
+
+export const ATIVOS_INCOMPLETOS_SEED: Ativo[] = [
+  {
+    id: "ati1", patrimonio: "000722", codigoInterno: "SEMED-PJ-002", serie: "", categoria: "Projetor",
+    fabricante: "Epson", modelo: "PowerLite X51+", aquisicao: isoData(-300), valor: 4120, notaFiscal: "NF 15.930",
+    fornecedor: "Armazém Digital", garantiaFim: isoData(430), status: "Em Uso",
+    obs: "Cadastrado na migração da planilha da Educação — série pendente de verificação física.",
+    unidadeId: "un3", responsavelId: "u10", predio: "SEMED", sala: "Sala de Formação",
+    campos: {}, rede: null, historicoIP: [], movimentacoes: [], manutencoes: [],
+    pertencimento: { orgaoId: "un0", gestoraId: "ug3", fundoId: "fm2", secretariaId: "un3", departamentoId: null, centroCusto: "CC-0330", responsavelPatrimonialId: "u10" },
+  },
+  {
+    id: "ati2", patrimonio: "000735", codigoInterno: "SAU-IMP-019", serie: "HPLJ-735B", categoria: "Impressora",
+    fabricante: "HP", modelo: "LaserJet M15w", aquisicao: isoData(-420), valor: 1390, notaFiscal: "NF 14.810",
+    fornecedor: "Kalunga S.A.", garantiaFim: isoData(-60), status: "Em Uso",
+    obs: "Responsável e sala pendentes de confirmação após reforma da UBS.",
+    unidadeId: "un4", responsavelId: null, predio: "UBS Centro", sala: "",
+    campos: {}, rede: null, historicoIP: [], movimentacoes: [], manutencoes: [],
+    pertencimento: { orgaoId: "un0", gestoraId: "ug2", fundoId: "fm1", secretariaId: "un4", departamentoId: null, centroCusto: "CC-0442", responsavelPatrimonialId: null },
+  },
+  {
+    id: "ati3", patrimonio: "000741", codigoInterno: "DTI-M-121", serie: "LG24-655", categoria: "Monitor",
+    fabricante: "LG", modelo: "24MK430 23,8\"", aquisicao: "", valor: 780, notaFiscal: "NF 16.440",
+    fornecedor: "Kalunga S.A.", garantiaFim: isoData(1000), status: "Em Estoque",
+    obs: "Possível duplicidade de série com o patrimônio 000655 — verificar antes do tombamento definitivo.",
+    unidadeId: "un11", responsavelId: null, predio: "Almoxarifado TI", sala: "Prateleira C-3",
+    campos: {}, rede: null, historicoIP: [], movimentacoes: [], manutencoes: [],
+  },
+  {
+    id: "ati4", patrimonio: "", codigoInterno: "SETUR-TAB-004", serie: "TAB-744SM", categoria: "Tablet",
+    fabricante: "Samsung", modelo: "Galaxy Tab A9", aquisicao: isoData(-150), valor: 1590, notaFiscal: "NF 16.205",
+    fornecedor: "Telefonia Municipal", garantiaFim: isoData(580), status: "Em Uso",
+    obs: "Número de patrimônio pendente de etiquetagem.",
+    unidadeId: "un5", responsavelId: "u12", predio: "SETUR", sala: "Atendimento",
+    campos: {}, rede: null, historicoIP: [], movimentacoes: [], manutencoes: [],
+  },
 ];
