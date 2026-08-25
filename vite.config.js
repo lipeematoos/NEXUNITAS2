@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  base: "/NEXUNITAS2/",
   plugins: [react(), tailwindcss()],
   server: {
     host: "0.0.0.0",
