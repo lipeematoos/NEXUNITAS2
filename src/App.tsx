@@ -14,13 +14,17 @@ import { Calendario, Documentos } from "./views/Calendario";
 import { Indicadores, Relatorios } from "./views/Analise";
 import Riscos from "./views/Riscos";
 import { Administracao, Configuracoes } from "./views/Sistema";
+import Comunicacao from "./modules/comunicacao/Comunicacao";
+import CentralTI from "./modules/servicedesk/CentralTI";
+import Aprovacoes from "./modules/servicedesk/Aprovacoes";
+import Patrimonio from "./modules/patrimonio/Patrimonio";
 
 type Etapa = "instalacao" | "login" | "sistema";
 
 function etapaInicial(): Etapa {
   try {
-    if (!localStorage.getItem("siga.instalado")) return "instalacao";
-    return localStorage.getItem("siga.sessao") ? "sistema" : "login";
+    if (!localStorage.getItem("govflow.instalado")) return "instalacao";
+    return localStorage.getItem("govflow.sessao") ? "sistema" : "login";
   } catch {
     return "login";
   }
@@ -47,7 +51,7 @@ export default function App() {
         {etapa === "instalacao" && (
           <AssistenteInstalacao
             onConcluir={() => {
-              guardar("siga.instalado", "1");
+              guardar("govflow.instalado", "1");
               setEtapa("login");
             }}
           />
@@ -55,7 +59,7 @@ export default function App() {
         {etapa === "login" && (
           <Login
             onEntrar={() => {
-              guardar("siga.sessao", "1");
+              guardar("govflow.sessao", "1");
               setEtapa("sistema");
             }}
           />
@@ -65,12 +69,16 @@ export default function App() {
             view={view}
             irPara={(v) => setView(v)}
             onLogout={() => {
-              guardar("siga.sessao", null);
+              guardar("govflow.sessao", null);
               setEtapa("login");
             }}
           >
             {view === "painel" && <Painel irPara={irPara} />}
-            {view === "minha-area" && <MinhaArea />}
+            {view === "minha-area" && <MinhaArea irPara={irPara} />}
+            {view === "comunicacao" && <Comunicacao />}
+            {view === "central-ti" && <CentralTI irPara={irPara} />}
+            {view === "aprovacoes" && <Aprovacoes />}
+            {view === "patrimonio" && <Patrimonio />}
             {view === "projetos" && <Projetos />}
             {view === "tarefas" && <Tarefas />}
             {view === "demandas" && <Demandas />}
@@ -86,7 +94,7 @@ export default function App() {
             {view === "configuracoes" && (
               <Configuracoes
                 onRefazerInstalacao={() => {
-                  guardar("siga.instalado", null);
+                  guardar("govflow.instalado", null);
                   setEtapa("instalacao");
                 }}
               />

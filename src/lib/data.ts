@@ -342,3 +342,769 @@ export const COMUNICADOS = [
   "Audiência pública da SESAU: painéis de indicadores devem estar consolidados até quinta-feira.",
   "Campanha de conscientização em segurança da informação: responda ao questionário obrigatório.",
 ];
+
+/* ===================== RBAC — perfis e permissões ===================== */
+
+export interface Permissao { chave: string; rotulo: string; }
+
+export const PERMISSOES: Permissao[] = [
+  { chave: "organization.view", rotulo: "Visualizar organização" },
+  { chave: "organization.manage", rotulo: "Gerenciar organização" },
+  { chave: "administrativeUnit.manage", rotulo: "Gerenciar unidades administrativas" },
+  { chave: "user.manage", rotulo: "Gerenciar usuários" },
+  { chave: "team.manage", rotulo: "Gerenciar equipes" },
+  { chave: "project.view", rotulo: "Visualizar projetos e tarefas" },
+  { chave: "project.create", rotulo: "Criar projetos" },
+  { chave: "task.manage", rotulo: "Gerenciar tarefas" },
+  { chave: "comunicacao.view", rotulo: "Comunicação interna" },
+  { chave: "ticket.create", rotulo: "Abrir chamados" },
+  { chave: "ticket.manage", rotulo: "Gerenciar central de serviços" },
+  { chave: "ticket.approve", rotulo: "Aprovar solicitações" },
+  { chave: "asset.view", rotulo: "Visualizar patrimônio de TI" },
+  { chave: "asset.manage", rotulo: "Gerenciar patrimônio de TI" },
+  { chave: "workflow.manage", rotulo: "Gerenciar fluxos de trabalho" },
+  { chave: "report.view", rotulo: "Visualizar relatórios e indicadores" },
+  { chave: "audit.view", rotulo: "Visualizar auditoria" },
+  { chave: "system.configure", rotulo: "Configurar o sistema" },
+];
+
+export const PERFIS_RBAC: Record<string, string[]> = {
+  "Super Administrador": ["*"],
+  "Administrador do Sistema": ["*"],
+  "Secretário": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.approve", "report.view", "asset.view", "indicadores"],
+  "Diretor": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.approve", "report.view", "asset.view"],
+  "Coordenador": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.approve", "report.view", "asset.view"],
+  "Gestor": ["organization.view", "comunicacao.view", "project.view", "project.create", "task.manage", "ticket.create", "ticket.approve", "report.view", "asset.view", "workflow.manage"],
+  "Gerente de Projeto": ["organization.view", "comunicacao.view", "project.view", "project.create", "task.manage", "ticket.create", "report.view", "asset.view", "workflow.manage"],
+  "Líder de Equipe": ["organization.view", "comunicacao.view", "project.view", "task.manage", "ticket.create", "ticket.manage", "asset.view", "report.view"],
+  "Técnico de TI": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.manage", "asset.view", "asset.manage", "report.view"],
+  "Servidor": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "asset.view"],
+  "Visualizador": ["organization.view", "comunicacao.view", "project.view", "asset.view", "report.view"],
+};
+
+export function temPermissaoPerfil(perfil: string, chave: string): boolean {
+  const lista = PERFIS_RBAC[perfil];
+  if (!lista) return false;
+  return lista.includes("*") || lista.includes(chave);
+}
+
+/** Permissão mínima exigida por item de menu. */
+export const NAV_PERMISSOES: Record<string, string> = {
+  painel: "organization.view", "minha-area": "organization.view", comunicacao: "comunicacao.view",
+  "central-ti": "ticket.create", patrimonio: "asset.view", projetos: "project.view",
+  tarefas: "project.view", demandas: "project.view", fluxos: "project.view", equipes: "organization.view",
+  organograma: "organization.view", calendario: "organization.view", documentos: "organization.view",
+  indicadores: "report.view", riscos: "report.view", relatorios: "report.view",
+  administracao: "system.configure", configuracoes: "system.configure",
+};
+
+/* ===================== Comunicação interna ===================== */
+
+export interface Canal {
+  id: string; nome: string; descricao: string;
+  visibilidade: "Público" | "Restrito" | "Privado";
+  membros: string[]; direto?: boolean;
+}
+export interface AnexoMsg { nome: string; tamanho: string; }
+export interface Mensagem {
+  id: string; canalId: string; autorId: string; texto: string; data: string;
+  reacoes: Record<string, string[]>; fixada?: boolean; anexos?: AnexoMsg[];
+}
+export interface ComunicadoEnt {
+  id: string; titulo: string; mensagem: string; autorId: string;
+  alvo: string; prioridade: "Normal" | "Importante" | "Urgente";
+  publicadaEm: string; expiraEm: string; lidoPor: string[];
+}
+
+export const CANAIS_SEED: Canal[] = [
+  { id: "c1", nome: "geral", descricao: "Comunicação geral da Prefeitura", visibilidade: "Público", membros: ["u1", "u2", "u3", "u4", "u5", "u6", "u7", "u8", "u9", "u10", "u12", "u13"] },
+  { id: "c2", nome: "avisos", descricao: "Comunicados oficiais da administração", visibilidade: "Restrito", membros: ["u1", "u2", "u3", "u4", "u5", "u6", "u7", "u8", "u9", "u10", "u12", "u13"] },
+  { id: "c3", nome: "ti", descricao: "Assuntos do Departamento de TI", visibilidade: "Público", membros: ["u1", "u2", "u3", "u4", "u5", "u6"] },
+  { id: "c4", nome: "infraestrutura", descricao: "Canal automático — Equipe de Infraestrutura", visibilidade: "Privado", membros: ["u4", "u3", "u2"] },
+  { id: "c5", nome: "sistemas", descricao: "Canal automático — Equipe de Sistemas", visibilidade: "Privado", membros: ["u1", "u6", "u2"] },
+  { id: "c6", nome: "projeto-portal-cidadao", descricao: "Canal automático — Projeto Portal de Serviços", visibilidade: "Restrito", membros: ["u1", "u6", "u2", "u5"] },
+  { id: "dm1", nome: "Conversa com Carlos Eduardo Menezes", descricao: "Mensagem direta", visibilidade: "Privado", membros: ["u1", "u2"], direto: true },
+  { id: "dm2", nome: "Conversa com Mariana Lopes Siqueira", descricao: "Mensagem direta", visibilidade: "Privado", membros: ["u1", "u5"], direto: true },
+];
+
+export const MENSAGENS_SEED: Mensagem[] = [
+  { id: "m1", canalId: "c1", autorId: "u2", texto: "Bom dia a todos! Lembro que a janela de manutenção do datacenter será sexta-feira, das 22h às 2h. Sistemas de arrecadação ficarão indisponíveis.", data: isoRel(-1, 8, 32), reacoes: { "👍": ["u1", "u3", "u7"], "✅": ["u5"] }, fixada: true },
+  { id: "m2", canalId: "c1", autorId: "u7", texto: "Obrigada pelo aviso, Carlos. O RH vai programar o fechamento da folha antes da janela.", data: isoRel(-1, 8, 47), reacoes: { "👍": ["u2"] } },
+  { id: "m3", canalId: "c1", autorId: "u9", texto: "A SEFAZ precisa do relatório de consumo de link até quinta. @Ana Beatriz Rocha consegue adiantar?", data: isoRel(0, 7, 58), reacoes: {} },
+  { id: "m4", canalId: "c1", autorId: "u1", texto: "Consigo sim, Fernanda. Entrego amanhã no fim do dia com o detalhamento por secretaria.", data: isoRel(0, 8, 5), reacoes: { "🙏": ["u9"] } },
+  { id: "m5", canalId: "c3", autorId: "u2", texto: "Pessoal, o novo fluxo de homologação de sistemas entra em vigor segunda. Leiam a documentação no módulo de Documentos.", data: isoRel(-1, 14, 12), reacoes: { "✅": ["u1", "u3", "u4", "u5"] }, fixada: true },
+  { id: "m6", canalId: "c3", autorId: "u4", texto: "Cluster de virtualização homologado com sucesso. Testes de failover passaram em 4 min.", data: isoRel(0, 9, 24), reacoes: { "🎉": ["u1", "u2", "u3"], "👍": ["u5", "u6"] } },
+  { id: "m7", canalId: "c3", autorId: "u3", texto: "Rompimento de fibra na Av. Central em recomposição. Previsão de normalização às 16h. Acompanhem pelo chamado TI-2026-000005.", data: isoRel(0, 10, 3), reacoes: { "👀": ["u2", "u4"] } },
+  { id: "m8", canalId: "c4", autorId: "u4", texto: "Nobreak do rack 3 substituído. Próxima preventiva dos racks 1 e 2 agendada para a janela de sexta.", data: isoRel(-1, 16, 40), reacoes: { "👍": ["u3"] } },
+  { id: "m9", canalId: "c5", autorId: "u1", texto: "Integração do protocolo digital com o Portal concluída em homologação. Deploy em produção depende do comitê.", data: isoRel(0, 9, 41), reacoes: { "🎉": ["u6", "u2"] } },
+  { id: "m10", canalId: "c6", autorId: "u6", texto: "Protótipo da área de agendamentos pronto para revisão. Marquem a review com a SEMED e a SESAU.", data: isoRel(-1, 15, 18), reacoes: {} },
+  { id: "m11", canalId: "dm1", autorId: "u2", texto: "Ana, consegue revisar a política de senhas antes do comitê de quinta?", data: isoRel(0, 8, 20), reacoes: {} },
+  { id: "m12", canalId: "dm1", autorId: "u1", texto: "Já revisei e ajustei o item de MFA. Te envio a versão final ainda hoje.", data: isoRel(0, 8, 26), reacoes: { "👍": ["u2"] } },
+  { id: "m13", canalId: "dm2", autorId: "u5", texto: "Ana, o lote 2 da aquisição de estações continua suspenso. Sigo com a imagem corporativa?", data: isoRel(0, 9, 2), reacoes: {} },
+];
+
+export const COMUNICADOS_SEED: ComunicadoEnt[] = [
+  { id: "co1", titulo: "Janela de manutenção do datacenter", mensagem: "Nesta sexta-feira, das 22h às 2h, o datacenter municipal passará por manutenção preventiva. Sistemas de arrecadação, folha e protocolo ficarão indisponíveis. Programem-se.", autorId: "u2", alvo: "Toda a organização", prioridade: "Importante", publicadaEm: isoRel(-1, 9, 0), expiraEm: isoData(3), lidoPor: ["u1", "u3", "u4", "u5", "u6", "u7", "u9"] },
+  { id: "co2", titulo: "Campanha de conscientização em segurança", mensagem: "Todos os servidores devem responder ao questionário obrigatório de segurança da informação até o fim do mês. O link está disponível no Portal Interno.", autorId: "u2", alvo: "Toda a organização", prioridade: "Normal", publicadaEm: isoRel(-4, 10, 30), expiraEm: isoData(16), lidoPor: ["u1", "u3", "u5", "u7"] },
+  { id: "co3", titulo: "Novo fluxo de homologação de sistemas", mensagem: "A partir de segunda-feira, toda versão de sistema deverá passar pelo fluxo formal de homologação, com testes registrados e aprovação do gestor da área.", autorId: "u1", alvo: "Departamento de Tecnologia da Informação", prioridade: "Normal", publicadaEm: isoRel(-2, 11, 15), expiraEm: isoData(9), lidoPor: ["u2", "u3", "u4", "u5", "u6"] },
+  { id: "co4", titulo: "Instabilidade no link de internet", mensagem: "Identificamos instabilidade no circuito principal. O failover foi acionado e a operadora já está atuando. Priorizem serviços críticos.", autorId: "u3", alvo: "Secretaria Municipal de Administração", prioridade: "Urgente", publicadaEm: isoRel(0, 10, 12), expiraEm: isoData(1), lidoPor: ["u1", "u4", "u5"] },
+];
+
+/* ===================== Central de Serviços de TI ===================== */
+
+export const STATUS_CHAMADO: { label: string; tom: Tom; hex: string }[] = [
+  { label: "Aberto", tom: "azul", hex: "#20659f" },
+  { label: "Aguardando Aprovação", tom: "ambar", hex: "#b4690e" },
+  { label: "Aprovado", tom: "verde", hex: "#1e7a54" },
+  { label: "Rejeitado", tom: "vermelho", hex: "#b3402a" },
+  { label: "Em Triagem", tom: "ciano", hex: "#0e7490" },
+  { label: "Atribuído", tom: "azul", hex: "#1b5583" },
+  { label: "Em Atendimento", tom: "amarelo", hex: "#7a5a00" },
+  { label: "Aguardando Usuário", tom: "ambar", hex: "#8f5409" },
+  { label: "Aguardando Terceiro", tom: "ambar", hex: "#8f5409" },
+  { label: "Aguardando Peça", tom: "ambar", hex: "#8f5409" },
+  { label: "Resolvido", tom: "pinho", hex: "#0e4a2f" },
+  { label: "Fechado", tom: "cinza", hex: "#4d5c53" },
+  { label: "Cancelado", tom: "cinza", hex: "#4d5c53" },
+];
+
+export const TIPO_CHAMADO = ["Incidente", "Solicitação de Serviço"] as const;
+
+export interface CategoriaPortal { id: string; nome: string; icone: string; descricao: string; }
+
+export const CATEGORIAS_PORTAL: CategoriaPortal[] = [
+  { id: "cat1", nome: "Computador e Notebook", icone: "monitor", descricao: "Problemas e solicitações de estações de trabalho" },
+  { id: "cat2", nome: "Impressoras", icone: "impressora", descricao: "Instalação, atolamento, toner e drivers" },
+  { id: "cat3", nome: "Internet e Rede", icone: "rede", descricao: " Lentidão, queda de conexão e pontos de rede" },
+  { id: "cat4", nome: "Usuários e Senhas", icone: "usuario", descricao: "Criação de contas e redefinição de senhas" },
+  { id: "cat5", nome: "Sistemas", icone: "sistema", descricao: "Acesso e problemas nos sistemas municipais" },
+  { id: "cat6", nome: "Wi-Fi", icone: "wifi", descricao: "Cobertura, credenciais e acesso de visitantes" },
+  { id: "cat7", nome: "Telefonia", icone: "fone", descricao: "Ramais, telefones IP e linhas externas" },
+  { id: "cat8", nome: "Instalação de Software", icone: "caixa", descricao: "Softwares homologados e licenças" },
+  { id: "cat9", nome: "Acesso a Sistemas", icone: "cadeado", descricao: "Perfis, privilégios e autorizações" },
+  { id: "cat10", nome: "Equipamentos", icone: "cpu", descricao: "Solicitação e troca de equipamentos" },
+  { id: "cat11", nome: "Periféricos", icone: "periferico", descricao: "Teclados, mouses, webcams e monitores" },
+  { id: "cat12", nome: "Arquivos e Pastas", icone: "pasta", descricao: "Pastas de rede, permissões e recuperação" },
+  { id: "cat13", nome: "Outros", icone: "info", descricao: "Demais atendimentos de TI" },
+];
+
+export interface GrupoSuporte { id: string; nome: string; membroIds: string[]; }
+export const GRUPOS_SUPORTE_SEED: GrupoSuporte[] = [
+  { id: "g1", nome: "Suporte Técnico", membroIds: ["u5"] },
+  { id: "g2", nome: "Infraestrutura", membroIds: ["u4"] },
+  { id: "g3", nome: "Redes", membroIds: ["u3"] },
+  { id: "g4", nome: "Sistemas", membroIds: ["u1", "u6"] },
+  { id: "g5", nome: "Segurança da Informação", membroIds: ["u2"] },
+  { id: "g6", nome: "Telefonia", membroIds: ["u5"] },
+];
+
+export interface RegraSLA { prioridade: string; primeiraRespostaMin: number; resolucaoHoras: number; }
+export const REGRAS_SLA_SEED: RegraSLA[] = [
+  { prioridade: "Crítica", primeiraRespostaMin: 15, resolucaoHoras: 2 },
+  { prioridade: "Urgente", primeiraRespostaMin: 30, resolucaoHoras: 4 },
+  { prioridade: "Alta", primeiraRespostaMin: 60, resolucaoHoras: 8 },
+  { prioridade: "Normal", primeiraRespostaMin: 240, resolucaoHoras: 24 },
+  { prioridade: "Baixa", primeiraRespostaMin: 480, resolucaoHoras: 48 },
+];
+
+export interface EtapaAprovacao {
+  id: string; nome: string;
+  tipoAprovador: "Usuário específico" | "Gestor da unidade" | "Gestor da secretaria" | "Perfil" | "Grupo";
+  aprovador: string; obrigatoria: boolean; paralelo: boolean; prazoHoras: number;
+}
+export interface RegraAprovacao {
+  id: string; nome: string; servicoId: string | null; condicoes: string;
+  ativo: boolean; etapas: EtapaAprovacao[];
+}
+
+export const REGRAS_APROVACAO_SEED: RegraAprovacao[] = [
+  {
+    id: "ra1", nome: "Cadastro de Novo Usuário", servicoId: "sv1",
+    condicoes: "Serviço: Cadastro de Novo Usuário · todas as secretarias", ativo: true,
+    etapas: [
+      { id: "ra1e1", nome: "Gestor da Secretaria de Administração", tipoAprovador: "Gestor da secretaria", aprovador: "Secretaria Municipal de Administração", obrigatoria: true, paralelo: false, prazoHoras: 24 },
+      { id: "ra1e2", nome: "Encaminhamento à TI", tipoAprovador: "Grupo", aprovador: "Sistemas", obrigatoria: true, paralelo: false, prazoHoras: 8 },
+    ],
+  },
+  {
+    id: "ra2", nome: "Solicitação de Software", servicoId: "sv4",
+    condicoes: "Serviço: Instalar Software · licença paga ou fora do padrão", ativo: true,
+    etapas: [
+      { id: "ra2e1", nome: "Chefia Imediata", tipoAprovador: "Gestor da unidade", aprovador: "Unidade do solicitante", obrigatoria: false, paralelo: false, prazoHoras: 24 },
+      { id: "ra2e2", nome: "Validação da TI", tipoAprovador: "Grupo", aprovador: "Sistemas", obrigatoria: true, paralelo: false, prazoHoras: 48 },
+      { id: "ra2e3", nome: "Segurança da Informação", tipoAprovador: "Perfil", aprovador: "Administrador", obrigatoria: true, paralelo: true, prazoHoras: 48 },
+    ],
+  },
+  {
+    id: "ra3", nome: "Acesso Privilegiado", servicoId: "sv3",
+    condicoes: "Serviço: Solicitar Acesso · perfil administrativo ou de gestão", ativo: true,
+    etapas: [
+      { id: "ra3e1", nome: "Gestor da Secretaria", tipoAprovador: "Gestor da secretaria", aprovador: "Secretaria do solicitante", obrigatoria: true, paralelo: false, prazoHoras: 24 },
+      { id: "ra3e2", nome: "Responsável pelo Sistema", tipoAprovador: "Usuário específico", aprovador: "Ana Beatriz Rocha", obrigatoria: true, paralelo: true, prazoHoras: 24 },
+      { id: "ra3e3", nome: "Segurança da Informação", tipoAprovador: "Perfil", aprovador: "Administrador", obrigatoria: true, paralelo: false, prazoHoras: 48 },
+    ],
+  },
+];
+
+export interface Servico {
+  id: string; nome: string; categoriaId: string; grupoId: string; descricao: string;
+  requerAprovacao: boolean; regraAprovacaoId: string | null; prioridadePadrao: string;
+}
+export const SERVICOS_SEED: Servico[] = [
+  { id: "sv1", nome: "Criar Usuário", categoriaId: "cat4", grupoId: "g4", descricao: "Cadastro de novo servidor nos sistemas municipais, com perfil inicial padrão.", requerAprovacao: true, regraAprovacaoId: "ra1", prioridadePadrao: "Normal" },
+  { id: "sv2", nome: "Redefinir Senha", categoriaId: "cat4", grupoId: "g1", descricao: "Redefinição de senha de acesso aos sistemas e estações.", requerAprovacao: false, regraAprovacaoId: null, prioridadePadrao: "Normal" },
+  { id: "sv3", nome: "Solicitar Acesso", categoriaId: "cat9", grupoId: "g4", descricao: "Concessão de acesso a sistemas, módulos e perfis específicos.", requerAprovacao: true, regraAprovacaoId: "ra3", prioridadePadrao: "Alta" },
+  { id: "sv4", nome: "Instalar Software", categoriaId: "cat8", grupoId: "g1", descricao: "Instalação de software homologado na estação de trabalho.", requerAprovacao: true, regraAprovacaoId: "ra2", prioridadePadrao: "Normal" },
+  { id: "sv5", nome: "Solicitar Equipamento", categoriaId: "cat10", grupoId: "g1", descricao: "Fornecimento de equipamento novo ou substituição de estação.", requerAprovacao: true, regraAprovacaoId: null, prioridadePadrao: "Normal" },
+  { id: "sv6", nome: "Criar Pasta de Rede", categoriaId: "cat12", grupoId: "g2", descricao: "Criação de pasta compartilhada com permissões por equipe.", requerAprovacao: false, regraAprovacaoId: null, prioridadePadrao: "Baixa" },
+  { id: "sv7", nome: "Criar E-mail", categoriaId: "cat4", grupoId: "g4", descricao: "Criação de caixa de e-mail institucional.", requerAprovacao: false, regraAprovacaoId: null, prioridadePadrao: "Normal" },
+  { id: "sv8", nome: "Instalar Impressora", categoriaId: "cat2", grupoId: "g1", descricao: "Instalação e configuração de impressora na rede.", requerAprovacao: false, regraAprovacaoId: null, prioridadePadrao: "Normal" },
+  { id: "sv9", nome: "Criar Ponto de Rede", categoriaId: "cat3", grupoId: "g3", descricao: "Instalação e certificação de ponto de rede cabeada.", requerAprovacao: false, regraAprovacaoId: null, prioridadePadrao: "Normal" },
+  { id: "sv10", nome: "Solicitar Wi-Fi", categoriaId: "cat6", grupoId: "g3", descricao: "Credencial de acesso à rede Wi-Fi corporativa ou de visitantes.", requerAprovacao: false, regraAprovacaoId: null, prioridadePadrao: "Baixa" },
+];
+
+export interface ComentarioChamado { id: string; autorId: string; texto: string; data: string; tipo: "resposta" | "interna"; }
+export interface DecisaoAprovacao {
+  etapaId: string; etapaNome: string; status: "Pendente" | "Aprovado" | "Rejeitado" | "Ajuste solicitado";
+  aprovadorNome: string; data?: string; comentario?: string;
+}
+export interface Chamado {
+  id: string; numero: string; titulo: string; descricao: string;
+  tipo: (typeof TIPO_CHAMADO)[number]; solicitanteId: string; unidadeId: string; local: string;
+  categoriaId: string; servicoId: string | null; prioridade: string; status: string;
+  tecnicoId: string | null; grupoId: string | null; patrimonioId: string | null;
+  criadoEm: string; prazoResolucao: string;
+  aprovacoes: DecisaoAprovacao[]; historico: HistoricoItem[]; comentarios: ComentarioChamado[];
+}
+
+export const CHAMADOS_SEED: Chamado[] = [
+  {
+    id: "ch14", numero: "TI-2026-000014", titulo: "Cadastro de novo usuário — servidora da Secretaria de Turismo",
+    descricao: "Nova servidora nomeada para o setor de eventos. Necessário usuário nos sistemas de protocolo e e-mail institucional.",
+    tipo: "Solicitação de Serviço", solicitanteId: "u12", unidadeId: "un5", local: "Sala 12 — SETUR",
+    categoriaId: "cat4", servicoId: "sv1", prioridade: "Normal", status: "Aguardando Aprovação",
+    tecnicoId: null, grupoId: null, patrimonioId: null, criadoEm: isoRel(0, 8, 42),
+    prazoResolucao: isoRel(1, 8, 42),
+    aprovacoes: [
+      { etapaId: "ra1e1", etapaNome: "Gestor da Secretaria de Administração", status: "Pendente", aprovadorNome: "Carlos Eduardo Menezes" },
+      { etapaId: "ra1e2", etapaNome: "Encaminhamento à TI", status: "Pendente", aprovadorNome: "Grupo Sistemas" },
+    ],
+    historico: [
+      { data: isoRel(0, 8, 42), usuario: "Marcos Vinícius Sales", acao: "Chamado aberto", detalhe: "Cadastro de Novo Usuário solicitado pelo Portal de Serviços." },
+      { data: isoRel(0, 8, 42), usuario: "sistema", acao: "Enviado para aprovação", detalhe: "Regra: Cadastro de Novo Usuário · Etapa 1 — Gestor da Secretaria de Administração." },
+    ],
+    comentarios: [{ id: "cc14a", autorId: "u12", texto: "A servidora inicia na próxima segunda-feira. Seria possível priorizar?", data: isoRel(0, 8, 44), tipo: "resposta" }],
+  },
+  {
+    id: "ch13", numero: "TI-2026-000013", titulo: "Computador não liga — sala de empenhos",
+    descricao: "Estação da sala de empenhos não liga. Led acende e desliga em seguida. Relatórios de empenho parados.",
+    tipo: "Incidente", solicitanteId: "u9", unidadeId: "un2", local: "Sala 18 — SEFAZ",
+    categoriaId: "cat1", servicoId: null, prioridade: "Crítica", status: "Em Atendimento",
+    tecnicoId: "u5", grupoId: "g1", patrimonioId: "at1", criadoEm: isoRel(0, 7, 15),
+    prazoResolucao: isoRel(0, 9, 15),
+    aprovacoes: [],
+    historico: [
+      { data: isoRel(0, 7, 15), usuario: "Fernanda Castro Lima", acao: "Chamado aberto", detalhe: "Incidente registrado pelo Portal de Serviços." },
+      { data: isoRel(0, 7, 21), usuario: "sistema", acao: "Atribuído automaticamente", detalhe: "Grupo: Suporte Técnico · Técnica: Mariana Lopes Siqueira." },
+      { data: isoRel(0, 7, 26), usuario: "Mariana Lopes Siqueira", acao: "Atendimento iniciado", detalhe: "Diagnóstico remoto; provável falha na fonte. Visita técnica agendada." },
+    ],
+    comentarios: [
+      { id: "cc13a", autorId: "u5", texto: "Bom dia! Já estou a caminho da SEFAZ com uma fonte reserva.", data: isoRel(0, 7, 27), tipo: "resposta" },
+      { id: "cc13b", autorId: "u5", texto: "Fonte com capacitor estufado confirmado. Se a placa estiver danificada, acionar o at2 como reserva.", data: isoRel(0, 7, 58), tipo: "interna" },
+    ],
+  },
+  {
+    id: "ch12", numero: "TI-2026-000012", titulo: "Instalação do software de geoprocessamento",
+    descricao: "Instalar QGIS com plugins de cartografia na estação do setor de mapeamento.",
+    tipo: "Solicitação de Serviço", solicitanteId: "u13", unidadeId: "un6", local: "Sala 31 — SEOB",
+    categoriaId: "cat8", servicoId: "sv4", prioridade: "Normal", status: "Atribuído",
+    tecnicoId: "u6", grupoId: "g4", patrimonioId: null, criadoEm: isoRel(-1, 10, 5),
+    prazoResolucao: isoRel(0, 10, 5),
+    aprovacoes: [
+      { etapaId: "ra2e1", etapaNome: "Chefia Imediata", status: "Aprovado", aprovadorNome: "Renata Barbosa Farias", data: isoRel(-1, 11, 20), comentario: "Aprovado — uso em projeto de mapeamento de obras." },
+      { etapaId: "ra2e2", etapaNome: "Validação da TI", status: "Aprovado", aprovadorNome: "Eduardo Sá Barreto", data: isoRel(-1, 14, 2), comentario: "Software homologado, licença GPL." },
+      { etapaId: "ra2e3", etapaNome: "Segurança da Informação", status: "Aprovado", aprovadorNome: "Carlos Eduardo Menezes", data: isoRel(-1, 15, 30), comentario: "Sem restrições." },
+    ],
+    historico: [
+      { data: isoRel(-1, 10, 5), usuario: "Renata Barbosa Farias", acao: "Chamado aberto", detalhe: "Instalar Software via catálogo." },
+      { data: isoRel(-1, 15, 30), usuario: "sistema", acao: "Aprovações concluídas", detalhe: "3 de 3 etapas aprovadas. Chamado liberado para execução." },
+      { data: isoRel(-1, 15, 31), usuario: "sistema", acao: "Atribuído automaticamente", detalhe: "Grupo: Sistemas · Técnico: Eduardo Sá Barreto." },
+    ],
+    comentarios: [],
+  },
+  {
+    id: "ch11", numero: "TI-2026-000011", titulo: "Wi-Fi lento na recepção da Educação",
+    descricao: "Rede corporativa muito lenta na recepção. Atendimento ao público prejudicado nos cadastros online.",
+    tipo: "Incidente", solicitanteId: "u10", unidadeId: "un3", local: "Recepção — SEMED",
+    categoriaId: "cat6", servicoId: null, prioridade: "Alta", status: "Em Triagem",
+    tecnicoId: null, grupoId: "g3", patrimonioId: null, criadoEm: isoRel(0, 6, 50),
+    prazoResolucao: isoRel(0, 14, 50),
+    aprovacoes: [],
+    historico: [{ data: isoRel(0, 6, 50), usuario: "João Pereira Neto", acao: "Chamado aberto", detalhe: "Incidente registrado via Portal de Serviços." }],
+    comentarios: [],
+  },
+  {
+    id: "ch10", numero: "TI-2026-000010", titulo: "Redefinição de senha do sistema de folha",
+    descricao: "Esqueci a senha após o bloqueio por tentativas. Solicito redefinição.",
+    tipo: "Solicitação de Serviço", solicitanteId: "u7", unidadeId: "un12", local: "Sala 22 — DRH",
+    categoriaId: "cat4", servicoId: "sv2", prioridade: "Normal", status: "Resolvido",
+    tecnicoId: "u5", grupoId: "g1", patrimonioId: null, criadoEm: isoRel(0, 7, 40),
+    prazoResolucao: isoRel(1, 7, 40),
+    aprovacoes: [],
+    historico: [
+      { data: isoRel(0, 7, 40), usuario: "Patrícia Nunes Castro", acao: "Chamado aberto", detalhe: "Redefinir Senha via catálogo." },
+      { data: isoRel(0, 7, 47), usuario: "Mariana Lopes Siqueira", acao: "Chamado resolvido", detalhe: "Senha redefinida com expiração no primeiro acesso." },
+    ],
+    comentarios: [{ id: "cc10a", autorId: "u5", texto: "Senha redefinida. No primeiro acesso o sistema pedirá uma nova senha.", data: isoRel(0, 7, 47), tipo: "resposta" }],
+  },
+  {
+    id: "ch9", numero: "TI-2026-000009", titulo: "Instalação de ponto de rede — sala de vacinação",
+    descricao: "Dois pontos de rede na sala de vacinação reformada da UBS Centro.",
+    tipo: "Solicitação de Serviço", solicitanteId: "u11", unidadeId: "un4", local: "UBS Centro — Sala de Vacinação",
+    categoriaId: "cat3", servicoId: "sv9", prioridade: "Normal", status: "Aguardando Peça",
+    tecnicoId: "u4", grupoId: "g3", patrimonioId: null, criadoEm: isoRel(-3, 9, 10),
+    prazoResolucao: isoRel(2, 9, 10),
+    aprovacoes: [],
+    historico: [
+      { data: isoRel(-3, 9, 10), usuario: "Luciana Prado Teixeira", acao: "Chamado aberto", detalhe: "Criar Ponto de Rede via catálogo." },
+      { data: isoRel(-2, 10, 0), usuario: "Rafael Duarte Pinto", acao: "Atendimento iniciado", detalhe: "Vistoria realizada; cabeamento aprovado." },
+      { data: isoRel(-1, 9, 30), usuario: "Rafael Duarte Pinto", acao: "Status alterado para Aguardando Peça", detalhe: "Keystones e espelhos em falta no almoxarifado. Compra emergencial solicitada." },
+    ],
+    comentarios: [{ id: "cc9a", autorId: "u4", texto: "Material solicitado ao almoxarifado. Previsão de chegada em 2 dias úteis.", data: isoRel(-1, 9, 31), tipo: "resposta" }],
+  },
+  {
+    id: "ch8", numero: "TI-2026-000008", titulo: "Impressora atolando papel — protocolo central",
+    descricao: "Impressora do protocolo atolando papel em toda impressão dupla.",
+    tipo: "Incidente", solicitanteId: "u8", unidadeId: "un13", local: "Guichê 2 — DCOMP",
+    categoriaId: "cat2", servicoId: null, prioridade: "Alta", status: "Aguardando Usuário",
+    tecnicoId: "u5", grupoId: "g1", patrimonioId: "at7", criadoEm: isoRel(-2, 13, 45),
+    prazoResolucao: isoRel(-1, 13, 45),
+    aprovacoes: [],
+    historico: [
+      { data: isoRel(-2, 13, 45), usuario: "Tiago Almeida Braga", acao: "Chamado aberto", detalhe: "Incidente registrado via Portal de Serviços." },
+      { data: isoRel(-2, 14, 20), usuario: "Mariana Lopes Siqueira", acao: "Atendimento iniciado", detalhe: "Rolos de tração substituídos." },
+      { data: isoRel(-1, 8, 10), usuario: "Mariana Lopes Siqueira", acao: "Status alterado para Aguardando Usuário", detalhe: "Aguardando teste do solicitante com papel novo." },
+    ],
+    comentarios: [{ id: "cc8a", autorId: "u5", texto: "Troquei os rolos de tração. Pode testar com um papel novo, por favor?", data: isoRel(-1, 8, 10), tipo: "resposta" }],
+  },
+  {
+    id: "ch7", numero: "TI-2026-000007", titulo: "Acesso administrativo ao Portal da Transparência",
+    descricao: "Perfil de edição para atualização dos dados de execução orçamentária.",
+    tipo: "Solicitação de Serviço", solicitanteId: "u9", unidadeId: "un2", local: "Sala 15 — SEFAZ",
+    categoriaId: "cat9", servicoId: "sv3", prioridade: "Alta", status: "Aguardando Aprovação",
+    tecnicoId: null, grupoId: null, patrimonioId: null, criadoEm: isoRel(-1, 16, 20),
+    prazoResolucao: isoRel(0, 16, 20),
+    aprovacoes: [
+      { etapaId: "ra3e1", etapaNome: "Gestor da Secretaria", status: "Aprovado", aprovadorNome: "Fernanda Castro Lima", data: isoRel(-1, 17, 5), comentario: "Acesso necessário para a audiência pública." },
+      { etapaId: "ra3e2", etapaNome: "Responsável pelo Sistema", status: "Pendente", aprovadorNome: "Ana Beatriz Rocha" },
+      { etapaId: "ra3e3", etapaNome: "Segurança da Informação", status: "Pendente", aprovadorNome: "Carlos Eduardo Menezes" },
+    ],
+    historico: [
+      { data: isoRel(-1, 16, 20), usuario: "Fernanda Castro Lima", acao: "Chamado aberto", detalhe: "Solicitar Acesso via catálogo." },
+      { data: isoRel(-1, 17, 5), usuario: "Fernanda Castro Lima", acao: "Etapa 1 aprovada", detalhe: "Gestor da Secretaria — aprovação registrada." },
+    ],
+    comentarios: [],
+  },
+  {
+    id: "ch6", numero: "TI-2026-000006", titulo: "Queda do link principal de internet",
+    descricao: "Link de 2 Gbps sem comunicação com a operadora desde as 9h40.",
+    tipo: "Incidente", solicitanteId: "u2", unidadeId: "un11", local: "Datacenter — Rack 1",
+    categoriaId: "cat3", servicoId: null, prioridade: "Crítica", status: "Fechado",
+    tecnicoId: "u3", grupoId: "g3", patrimonioId: null, criadoEm: isoRel(-6, 9, 45),
+    prazoResolucao: isoRel(-6, 11, 45),
+    aprovacoes: [],
+    historico: [
+      { data: isoRel(-6, 9, 45), usuario: "Carlos Eduardo Menezes", acao: "Chamado aberto", detalhe: "Incidente crítico — failover acionado automaticamente." },
+      { data: isoRel(-6, 10, 30), usuario: "Juliana Freitas Almeida", acao: "Chamado resolvido", detalhe: "Falha na OLT da operadora. Circuito normalizado." },
+      { data: isoRel(-5, 9, 0), usuario: "Carlos Eduardo Menezes", acao: "Chamado fechado", detalhe: "Confirmada estabilidade por 24h." },
+    ],
+    comentarios: [],
+  },
+  {
+    id: "ch5", numero: "TI-2026-000005", titulo: "Rompimento de fibra — anel óptico Av. Central",
+    descricao: "Anel óptico rompido por obra na Av. Central. Enlace da Prefeitura com o Almoxarifado em contingência.",
+    tipo: "Incidente", solicitanteId: "u4", unidadeId: "un11", local: "Av. Central — Trecho 4",
+    categoriaId: "cat3", servicoId: null, prioridade: "Crítica", status: "Em Atendimento",
+    tecnicoId: "u3", grupoId: "g3", patrimonioId: null, criadoEm: isoRel(0, 8, 55),
+    prazoResolucao: isoRel(0, 16, 55),
+    aprovacoes: [],
+    historico: [
+      { data: isoRel(0, 8, 55), usuario: "Rafael Duarte Pinto", acao: "Chamado aberto", detalhe: "Rompimento identificado pelo monitoramento." },
+      { data: isoRel(0, 9, 30), usuario: "Juliana Freitas Almeida", acao: "Atendimento iniciado", detalhe: "Equipe de fusão em deslocamento." },
+    ],
+    comentarios: [{ id: "cc5a", autorId: "u3", texto: "Fusão em andamento, 6 de 12 fibras recompostas.", data: isoRel(0, 10, 20), tipo: "resposta" }],
+  },
+  {
+    id: "ch4", numero: "TI-2026-000004", titulo: "Criar pasta de rede para a comissão de licitação",
+    descricao: "Pasta compartilhada com acesso restrito aos membros da comissão.",
+    tipo: "Solicitação de Serviço", solicitanteId: "u8", unidadeId: "un13", local: "DCOMP",
+    categoriaId: "cat12", servicoId: "sv6", prioridade: "Baixa", status: "Fechado",
+    tecnicoId: "u4", grupoId: "g2", patrimonioId: null, criadoEm: isoRel(-9, 11, 0),
+    prazoResolucao: isoRel(-7, 11, 0),
+    aprovacoes: [],
+    historico: [
+      { data: isoRel(-9, 11, 0), usuario: "Tiago Almeida Braga", acao: "Chamado aberto", detalhe: "Criar Pasta de Rede via catálogo." },
+      { data: isoRel(-8, 9, 40), usuario: "Rafael Duarte Pinto", acao: "Chamado resolvido", detalhe: "Pasta criada com permissões por grupo AD." },
+    ],
+    comentarios: [],
+  },
+  {
+    id: "ch3", numero: "TI-2026-000003", titulo: "Telefone IP sem tom de discagem — gabinete",
+    descricao: "Aparelho registra na central mas não completa chamadas externas.",
+    tipo: "Incidente", solicitanteId: "u7", unidadeId: "un12", local: "Gabinete — Ramal 6121",
+    categoriaId: "cat7", servicoId: null, prioridade: "Urgente", status: "Resolvido",
+    tecnicoId: "u5", grupoId: "g6", patrimonioId: null, criadoEm: isoRel(-4, 10, 30),
+    prazoResolucao: isoRel(-4, 14, 30),
+    aprovacoes: [],
+    historico: [
+      { data: isoRel(-4, 10, 30), usuario: "Patrícia Nunes Castro", acao: "Chamado aberto", detalhe: "Incidente de telefonia." },
+      { data: isoRel(-4, 11, 50), usuario: "Mariana Lopes Siqueira", acao: "Chamado resolvido", detalhe: "Rota de saída corrigida na central telefônica." },
+    ],
+    comentarios: [],
+  },
+  {
+    id: "ch2", numero: "TI-2026-000002", titulo: "Solicitação de notebook para fiscalização de obras",
+    descricao: "Notebook com bateria de longa duração para uso em campo.",
+    tipo: "Solicitação de Serviço", solicitanteId: "u13", unidadeId: "un6", local: "SEOB — Fiscalização",
+    categoriaId: "cat10", servicoId: "sv5", prioridade: "Alta", status: "Aguardando Aprovação",
+    tecnicoId: null, grupoId: null, patrimonioId: null, criadoEm: isoRel(0, 8, 5),
+    prazoResolucao: isoRel(1, 8, 5),
+    aprovacoes: [
+      { etapaId: "ra1e1", etapaNome: "Gestor da Secretaria de Administração", status: "Pendente", aprovadorNome: "Carlos Eduardo Menezes" },
+    ],
+    historico: [
+      { data: isoRel(0, 8, 5), usuario: "Renata Barbosa Farias", acao: "Chamado aberto", detalhe: "Solicitar Equipamento via catálogo." },
+      { data: isoRel(0, 8, 5), usuario: "sistema", acao: "Enviado para aprovação", detalhe: "Verificação de disponibilidade de estoque pela Administração." },
+    ],
+    comentarios: [],
+  },
+  {
+    id: "ch1", numero: "TI-2026-000001", titulo: "Erro ao emitir certidão negativa no sistema tributário",
+    descricao: "Mensagem de erro 500 ao gerar certidão para pessoa jurídica.",
+    tipo: "Incidente", solicitanteId: "u9", unidadeId: "un2", local: "Atendimento — SEFAZ",
+    categoriaId: "cat5", servicoId: null, prioridade: "Urgente", status: "Cancelado",
+    tecnicoId: "u6", grupoId: "g4", patrimonioId: null, criadoEm: isoRel(-12, 9, 20),
+    prazoResolucao: isoRel(-12, 13, 20),
+    aprovacoes: [],
+    historico: [
+      { data: isoRel(-12, 9, 20), usuario: "Fernanda Castro Lima", acao: "Chamado aberto", detalhe: "Incidente no sistema tributário." },
+      { data: isoRel(-12, 10, 0), usuario: "Eduardo Sá Barreto", acao: "Chamado cancelado", detalhe: "Duplicado do chamado anterior — erro já corrigido em produção." },
+    ],
+    comentarios: [],
+  },
+];
+
+/* ===================== Patrimônio de TI ===================== */
+
+export const STATUS_ATIVO: { label: string; tom: Tom; hex: string }[] = [
+  { label: "Cadastrado", tom: "cinza", hex: "#8a9a8f" },
+  { label: "Em Estoque", tom: "azul", hex: "#20659f" },
+  { label: "Em Preparação", tom: "ciano", hex: "#0e7490" },
+  { label: "Em Uso", tom: "verde", hex: "#1e7a54" },
+  { label: "Emprestado", tom: "ambar", hex: "#b4690e" },
+  { label: "Em Manutenção", tom: "ambar", hex: "#8f5409" },
+  { label: "Reserva", tom: "pinho", hex: "#0e4a2f" },
+  { label: "Obsoleto", tom: "vermelho", hex: "#96331e" },
+  { label: "Baixado", tom: "cinza", hex: "#4d5c53" },
+];
+
+export const CATEGORIAS_ATIVO = [
+  "Desktop", "Notebook", "Monitor", "Impressora", "Switch", "Roteador", "Access Point", "Servidor",
+  "Nobreak", "Smartphone", "Tablet", "Telefone IP", "Scanner", "Storage", "Firewall", "Periférico",
+];
+
+/** Campos técnicos dinâmicos por categoria (configuráveis pelo administrador). */
+export const CAMPOS_DINAMICOS: Record<string, { chave: string; rotulo: string }[]> = {
+  Desktop: [{ chave: "cpu", rotulo: "CPU" }, { chave: "ram", rotulo: "RAM" }, { chave: "storage", rotulo: "Storage" }, { chave: "gpu", rotulo: "GPU" }, { chave: "so", rotulo: "Sistema Operacional" }],
+  Notebook: [{ chave: "cpu", rotulo: "CPU" }, { chave: "ram", rotulo: "RAM" }, { chave: "storage", rotulo: "Storage" }, { chave: "gpu", rotulo: "GPU" }, { chave: "so", rotulo: "Sistema Operacional" }],
+  Servidor: [{ chave: "cpu", rotulo: "CPU" }, { chave: "ram", rotulo: "RAM" }, { chave: "storage", rotulo: "Storage" }, { chave: "hypervisor", rotulo: "Hypervisor" }, { chave: "servicos", rotulo: "Serviços" }, { chave: "so", rotulo: "Sistema Operacional" }],
+  Switch: [{ chave: "portas", rotulo: "Nº de Portas" }, { chave: "gerenciavel", rotulo: "Gerenciável" }, { chave: "vlans", rotulo: "VLANs" }, { chave: "firmware", rotulo: "Firmware" }, { chave: "ipGerencia", rotulo: "IP de Gerenciamento" }],
+  Impressora: [{ chave: "ipRede", rotulo: "IP de Rede" }, { chave: "tipoImp", rotulo: "Tipo" }, { chave: "toner", rotulo: "Toner" }, { chave: "contador", rotulo: "Contador de Páginas" }],
+  Nobreak: [{ chave: "potencia", rotulo: "Potência" }, { chave: "bateria", rotulo: "Modelo da Bateria" }, { chave: "trocaBateria", rotulo: "Troca da Bateria" }],
+  Storage: [{ chave: "capacidade", rotulo: "Capacidade" }, { chave: "raid", rotulo: "Nível RAID" }, { chave: "discos", rotulo: "Discos" }],
+  Firewall: [{ chave: "firmware", rotulo: "Firmware" }, { chave: "licenca", rotulo: "Licença UTM" }, { chave: "portas", rotulo: "Portas WAN/LAN" }],
+  "Access Point": [{ chave: "padrao", rotulo: "Padrão Wi-Fi" }, { chave: "ssid", rotulo: "SSIDs" }, { chave: "ipGerencia", rotulo: "IP de Gerenciamento" }],
+};
+
+export interface InfoRede {
+  hostname: string; ipv4: string; ipv6: string; mac: string; tipoEnd: "DHCP" | "Estático";
+  vlan: string; subrede: string; gateway: string; dns1: string; dns2: string;
+  dominio: string; ou: string; ingressado: boolean; ultimaSync: string; statusDominio: string;
+}
+export interface HistoricoIP { ipv4: string; hostname: string; mac: string; vlan: string; detectadoEm: string; origem: "Manual" | "DHCP" | "Active Directory" | "Varredura de rede" | "Agente" | "Importação"; }
+export interface Movimentacao { origem: string; destino: string; responsavelAnterior: string; novoResponsavel: string; data: string; usuario: string; motivo: string; }
+export interface Manutencao { id: string; tecnicoId: string; data: string; tipo: "Preventiva" | "Corretiva"; descricao: string; diagnostico: string; solucao: string; pecas: string; custo: number; chamadoId: string | null; tempoMin: number; }
+
+export interface Ativo {
+  id: string; patrimonio: string; codigoInterno: string; serie: string; categoria: string;
+  fabricante: string; modelo: string; aquisicao: string; valor: number; notaFiscal: string;
+  fornecedor: string; garantiaFim: string; status: string; obs: string;
+  unidadeId: string; responsavelId: string | null; predio: string; sala: string;
+  campos: Record<string, string>; rede: InfoRede | null;
+  historicoIP: HistoricoIP[]; movimentacoes: Movimentacao[]; manutencoes: Manutencao[];
+}
+
+const ipHist = (rows: [string, string, string, string, number, HistoricoIP["origem"]][]): HistoricoIP[] =>
+  rows.map(([ipv4, hostname, mac, vlan, d, origem]) => ({ ipv4, hostname, mac, vlan, detectadoEm: isoRel(d, 6), origem }));
+
+export const ATIVOS_SEED: Ativo[] = [
+  {
+    id: "at1", patrimonio: "000458", codigoInterno: "DTI-D-023", serie: "BR7KQ458", categoria: "Desktop",
+    fabricante: "Dell", modelo: "OptiPlex 7090", aquisicao: isoData(-1100), valor: 6890, notaFiscal: "NF 12.445",
+    fornecedor: "Dell Computadores do Brasil", garantiaFim: isoData(-370), status: "Em Uso",
+    obs: "Estação padrão da secretaria com imagem corporativa.", unidadeId: "un2", responsavelId: "u9",
+    predio: "Paço Municipal", sala: "Sala 18 — Empenhos",
+    campos: { cpu: "Intel Core i5-11500", ram: "16 GB DDR4", storage: "SSD NVMe 512 GB", gpu: "Intel UHD 750", so: "Windows 11 Pro 23H2" },
+    rede: { hostname: "ADM-PC-023", ipv4: "192.168.10.47", ipv6: "—", mac: "D4:5D:64:1A:2B:47", tipoEnd: "DHCP", vlan: "VLAN 10 — Administração", subrede: "255.255.255.0", gateway: "192.168.10.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "OU=SEFAZ,OU=Estacoes,DC=prefeitura,DC=local", ingressado: true, ultimaSync: isoRel(0, 6, 12), statusDominio: "Sincronizado" },
+    historicoIP: ipHist([
+      ["192.168.10.47", "ADM-PC-023", "D4:5D:64:1A:2B:47", "10", 0, "DHCP"],
+      ["192.168.10.31", "ADM-PC-023", "D4:5D:64:1A:2B:47", "10", -60, "DHCP"],
+      ["192.168.20.15", "DTI-IMG-023", "D4:5D:64:1A:2B:47", "20", -180, "Manual"],
+    ]),
+    movimentacoes: [
+      { origem: "Almoxarifado Central", destino: "DTI — Preparação", responsavelAnterior: "Estoque", novoResponsavel: "Rafael Duarte Pinto", data: isoRel(-1090), usuario: "Mariana Lopes Siqueira", motivo: "Preparação de imagem corporativa" },
+      { origem: "DTI — Preparação", destino: "SEFAZ — Sala de Empenhos", responsavelAnterior: "Rafael Duarte Pinto", novoResponsavel: "Fernanda Castro Lima", data: isoRel(-1080), usuario: "Mariana Lopes Siqueira", motivo: "Entrega com termo de responsabilidade" },
+    ],
+    manutencoes: [
+      { id: "mn1a", tecnicoId: "u5", data: isoRel(-120), tipo: "Corretiva", descricao: "Estação reiniciando sozinha", diagnostico: "Superaquecimento por poeira", solucao: "Limpeza interna e troca de pasta térmica", pecas: "Pasta térmica", custo: 35, chamadoId: null, tempoMin: 40 },
+      { id: "mn1b", tecnicoId: "u5", data: isoRel(-30), tipo: "Corretiva", descricao: "Fonte com ruído", diagnostico: "Capacitor estufado", solucao: "Fonte substituída em garantia interna", pecas: "Fonte 240W", custo: 210, chamadoId: null, tempoMin: 55 },
+    ],
+  },
+  {
+    id: "at2", patrimonio: "000461", codigoInterno: "DTI-N-014", serie: "LNV8842X", categoria: "Notebook",
+    fabricante: "Lenovo", modelo: "ThinkPad E15", aquisicao: isoData(-800), valor: 7450, notaFiscal: "NF 13.102",
+    fornecedor: "Lenovo Brasil", garantiaFim: isoData(300), status: "Emprestado",
+    obs: "Notebook de reserva para empréstimo a servidores em deslocamento.", unidadeId: "un6", responsavelId: "u13",
+    predio: "SEOB", sala: "Fiscalização",
+    campos: { cpu: "Intel Core i7-1165G7", ram: "16 GB DDR4", storage: "SSD NVMe 512 GB", gpu: "Intel Iris Xe", so: "Windows 11 Pro 23H2" },
+    rede: { hostname: "SEOB-NB-014", ipv4: "192.168.30.22", ipv6: "—", mac: "8C:16:45:77:AA:22", tipoEnd: "DHCP", vlan: "VLAN 30 — SEOB", subrede: "255.255.255.0", gateway: "192.168.30.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "OU=SEOB,OU=Notebooks,DC=prefeitura,DC=local", ingressado: true, ultimaSync: isoRel(-2, 17, 40), statusDominio: "Sincronizado" },
+    historicoIP: ipHist([
+      ["192.168.30.22", "SEOB-NB-014", "8C:16:45:77:AA:22", "30", -2, "Active Directory"],
+      ["10.4.9.87", "DTI-NB-014", "8C:16:45:77:AA:22", "20", -90, "Varredura de rede"],
+    ]),
+    movimentacoes: [
+      { origem: "DTI — Estoque", destino: "SEOB — Fiscalização", responsavelAnterior: "Estoque", novoResponsavel: "Renata Barbosa Farias", data: isoRel(-40), usuario: "Mariana Lopes Siqueira", motivo: "Empréstimo para vistorias de obras (termo nº 2026-081)" },
+    ],
+    manutencoes: [],
+  },
+  {
+    id: "at3", patrimonio: "000102", codigoInterno: "DTI-S-001", serie: "SVCTAG0102", categoria: "Servidor",
+    fabricante: "Dell", modelo: "PowerEdge R750", aquisicao: isoData(-400), valor: 98500, notaFiscal: "NF 15.878",
+    fornecedor: "Dell Computadores do Brasil", garantiaFim: isoData(1060), status: "Em Uso",
+    obs: "Host principal do cluster de virtualização (datacenter).", unidadeId: "un11", responsavelId: "u4",
+    predio: "Datacenter", sala: "Rack 2 — U21",
+    campos: { cpu: "2× Xeon Silver 4314", ram: "256 GB DDR4 ECC", storage: "8× 1,92 TB SSD SAS", hypervisor: "VMware vSphere 8", servicos: "vCenter, AD, Arquivos", so: "ESXi 8.0 U2" },
+    rede: { hostname: "ESXI-HOST-01", ipv4: "192.168.0.11", ipv6: "—", mac: "B0:26:28:11:01:AA", tipoEnd: "Estático", vlan: "VLAN 0 — Gerência DC", subrede: "255.255.255.0", gateway: "192.168.0.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "OU=Servidores,DC=prefeitura,DC=local", ingressado: true, ultimaSync: isoRel(0, 5, 58), statusDominio: "Sincronizado" },
+    historicoIP: ipHist([["192.168.0.11", "ESXI-HOST-01", "B0:26:28:11:01:AA", "0", -400, "Manual"]]),
+    movimentacoes: [],
+    manutencoes: [{ id: "mn3a", tecnicoId: "u4", data: isoRel(-15), tipo: "Preventiva", descricao: "Preventiva trimestral", diagnostico: "Sem alertas de hardware", solucao: "Atualização de firmware iDRAC e BIOS", pecas: "—", custo: 0, chamadoId: null, tempoMin: 90 }],
+  },
+  {
+    id: "at4", patrimonio: "000117", codigoInterno: "DTI-S-002", serie: "HPE117P", categoria: "Servidor",
+    fabricante: "HPE", modelo: "ProLiant DL380 Gen10", aquisicao: isoData(-1500), valor: 74200, notaFiscal: "NF 9.204",
+    fornecedor: "HPE Brasil", garantiaFim: isoData(-40), status: "Em Uso",
+    obs: "Banco de dados SQL e sistema tributário.", unidadeId: "un11", responsavelId: "u4",
+    predio: "Datacenter", sala: "Rack 2 — U24",
+    campos: { cpu: "2× Xeon Gold 6248", ram: "192 GB DDR4 ECC", storage: "12× 900 GB SAS 10k", hypervisor: "Windows Server 2022", servicos: "SQL Server, Tributário", so: "Windows Server 2022" },
+    rede: { hostname: "SRV-SQL-01", ipv4: "192.168.0.20", ipv6: "—", mac: "A0:B1:C2:20:00:15", tipoEnd: "Estático", vlan: "VLAN 0 — Gerência DC", subrede: "255.255.255.0", gateway: "192.168.0.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "OU=Servidores,DC=prefeitura,DC=local", ingressado: true, ultimaSync: isoRel(0, 6, 2), statusDominio: "Sincronizado" },
+    historicoIP: ipHist([["192.168.0.20", "SRV-SQL-01", "A0:B1:C2:20:00:15", "0", -700, "Manual"], ["192.168.0.22", "SRV-SQL-01", "A0:B1:C2:20:00:15", "0", -900, "Manual"]]),
+    movimentacoes: [],
+    manutencoes: [
+      { id: "mn4a", tecnicoId: "u4", data: isoRel(-80), tipo: "Corretiva", descricao: "Alerta de disco com setores realocados", diagnostico: "Disco 4 com falha iminente", solucao: "Disco substituído e RAID reconstruído", pecas: "HD SAS 900 GB", custo: 1850, chamadoId: null, tempoMin: 120 },
+      { id: "mn4b", tecnicoId: "u4", data: isoRel(-200), tipo: "Preventiva", descricao: "Preventiva trimestral", diagnostico: "Bateria do controlador com carga baixa", solucao: "Bateria do RAID substituída", pecas: "Bateria cache", custo: 620, chamadoId: null, tempoMin: 45 },
+      { id: "mn4c", tecnicoId: "u4", data: isoRel(-320), tipo: "Corretiva", descricao: "Fonte redundante em falha", diagnostico: "Fonte 2 fora de especificação", solucao: "Fonte substituída em garantia", pecas: "Fonte 800W", custo: 0, chamadoId: null, tempoMin: 60 },
+    ],
+  },
+  {
+    id: "at5", patrimonio: "000233", codigoInterno: "DTI-R-005", serie: "CSC9200-55", categoria: "Switch",
+    fabricante: "Cisco", modelo: "Catalyst 9200L-48P", aquisicao: isoData(-700), valor: 28900, notaFiscal: "NF 14.020",
+    fornecedor: "Cisco do Brasil", garantiaFim: isoData(760), status: "Em Uso",
+    obs: "Switch de acesso do Paço Municipal (PoE).", unidadeId: "un11", responsavelId: "u3",
+    predio: "Paço Municipal", sala: "Copa de rede — 2º andar",
+    campos: { portas: "48× 1GbE PoE + 4× SFP+", gerenciavel: "Sim — CLI/SNMP", vlans: "12 VLANs ativas", firmware: "IOS-XE 17.9.4", ipGerencia: "192.168.0.55" },
+    rede: { hostname: "SW-PACO-02", ipv4: "192.168.0.55", ipv6: "—", mac: "00:1A:A2:55:05:CC", tipoEnd: "Estático", vlan: "VLAN 0 — Gerência", subrede: "255.255.255.0", gateway: "192.168.0.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "OU=Rede,DC=prefeitura,DC=local", ingressado: false, ultimaSync: isoRel(0, 6, 30), statusDominio: "Não ingressado" },
+    historicoIP: ipHist([["192.168.0.55", "SW-PACO-02", "00:1A:A2:55:05:CC", "0", -700, "Manual"]]),
+    movimentacoes: [],
+    manutencoes: [],
+  },
+  {
+    id: "at6", patrimonio: "000301", codigoInterno: "DTI-P-007", serie: "HPLJ301", categoria: "Impressora",
+    fabricante: "HP", modelo: "LaserJet Pro M428fdw", aquisicao: isoData(-600), valor: 3980, notaFiscal: "NF 13.777",
+    fornecedor: "Kalunga S.A.", garantiaFim: isoData(-235), status: "Em Uso",
+    obs: "Impressora compartilhada do protocolo central.", unidadeId: "un13", responsavelId: "u8",
+    predio: "Paço Municipal", sala: "Guichê 2 — DCOMP",
+    campos: { ipRede: "192.168.10.140", tipoImp: "Laser monocromática multifuncional", toner: "HP 59X (alto rendimento)", contador: "84.312 páginas" },
+    rede: { hostname: "IMP-DCOMP-01", ipv4: "192.168.10.140", ipv6: "—", mac: "3C:52:82:14:0D:88", tipoEnd: "Estático", vlan: "VLAN 10 — Administração", subrede: "255.255.255.0", gateway: "192.168.10.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "OU=Impressoras,DC=prefeitura,DC=local", ingressado: false, ultimaSync: isoRel(-1, 19, 10), statusDominio: "Não ingressado" },
+    historicoIP: ipHist([["192.168.10.140", "IMP-DCOMP-01", "3C:52:82:14:0D:88", "10", -600, "Manual"], ["192.168.10.151", "IMP-DCOMP-01", "3C:52:82:14:0D:88", "10", -800, "DHCP"]]),
+    movimentacoes: [{ origem: "DTI — Estoque", destino: "DCOMP — Guichê 2", responsavelAnterior: "Estoque", novoResponsavel: "Tiago Almeida Braga", data: isoRel(-590), usuario: "Mariana Lopes Siqueira", motivo: "Substituição de impressora com defeito" }],
+    manutencoes: [
+      { id: "mn6a", tecnicoId: "u5", data: isoRel(-1), tipo: "Corretiva", descricao: "Atolamento recorrente de papel", diagnostico: "Rolos de tração desgastados", solucao: "Rolos substituídos", pecas: "Kit rolos de tração", custo: 180, chamadoId: "TI-2026-000008", tempoMin: 35 },
+      { id: "mn6b", tecnicoId: "u5", data: isoRel(-150), tipo: "Preventiva", descricao: "Limpeza preventiva semestral", diagnostico: "Acúmulo de toner no fusor", solucao: "Limpeza do conjunto fusor", pecas: "—", custo: 0, chamadoId: null, tempoMin: 25 },
+    ],
+  },
+  {
+    id: "at7", patrimonio: "000150", codigoInterno: "DTI-NB-003", serie: "SMS3000-99", categoria: "Nobreak",
+    fabricante: "SMS", modelo: "Sinus Triphases 30 kVA", aquisicao: isoData(-1300), valor: 42300, notaFiscal: "NF 8.512",
+    fornecedor: "SMS Tecnologia", garantiaFim: isoData(-200), status: "Em Uso",
+    obs: "Nobreak do datacenter — rack 3.", unidadeId: "un11", responsavelId: "u4",
+    predio: "Datacenter", sala: "Rack 3",
+    campos: { potencia: "30 kVA / 27 kW", bateria: "Banco 40× 9Ah", trocaBateria: "Prevista para março/2027" },
+    rede: null,
+    historicoIP: [],
+    movimentacoes: [],
+    manutencoes: [{ id: "mn7a", tecnicoId: "u4", data: isoRel(-8), tipo: "Preventiva", descricao: "Substituição preventiva — alerta de bateria", diagnostico: "Banco de baterias com capacitância baixa", solucao: "Banco de baterias substituído", pecas: "40 baterias 9Ah", custo: 8900, chamadoId: null, tempoMin: 150 }],
+  },
+  {
+    id: "at8", patrimonio: "000412", codigoInterno: "DTI-AP-011", serie: "UBI-AP-412", categoria: "Access Point",
+    fabricante: "Ubiquiti", modelo: "UniFi U6 Pro", aquisicao: isoData(-350), valor: 1890, notaFiscal: "NF 15.110",
+    fornecedor: "Fibra Shop", garantiaFim: isoData(380), status: "Em Uso",
+    obs: "Cobertura Wi-Fi da recepção central.", unidadeId: "un11", responsavelId: "u3",
+    predio: "Paço Municipal", sala: "Recepção — teto",
+    campos: { padrao: "Wi-Fi 6 (802.11ax)", ssid: "Prefeitura-Corporativa, Prefeitura-Visitantes", ipGerencia: "192.168.0.81" },
+    rede: { hostname: "AP-RECEPCAO-01", ipv4: "192.168.0.81", ipv6: "—", mac: "F0:9F:C2:81:11:44", tipoEnd: "DHCP", vlan: "VLAN 0 — Gerência", subrede: "255.255.255.0", gateway: "192.168.0.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "—", ingressado: false, ultimaSync: isoRel(0, 6, 45), statusDominio: "Não ingressado" },
+    historicoIP: ipHist([["192.168.0.81", "AP-RECEPCAO-01", "F0:9F:C2:81:11:44", "0", -10, "Varredura de rede"], ["192.168.0.90", "AP-RECEPCAO-01", "F0:9F:C2:81:11:44", "0", -120, "DHCP"]]),
+    movimentacoes: [],
+    manutencoes: [],
+  },
+  {
+    id: "at9", patrimonio: "000090", codigoInterno: "DTI-FW-001", serie: "FTN-60F-90", categoria: "Firewall",
+    fabricante: "Fortinet", modelo: "FortiGate 200F", aquisicao: isoData(-500), valor: 58700, notaFiscal: "NF 14.900",
+    fornecedor: "Fortinet Brasil", garantiaFim: isoData(590), status: "Em Uso",
+    obs: "Firewall de borda com UTM ativo.", unidadeId: "un11", responsavelId: "u3",
+    predio: "Datacenter", sala: "Rack 1 — U02",
+    campos: { firmware: "FortiOS 7.4.4", licenca: "UTM + IPS até 12/2027", portas: "8× GE RJ45 + 4× SFP" },
+    rede: { hostname: "FW-BORDA-01", ipv4: "192.168.0.2", ipv6: "—", mac: "90:6C:AC:02:00:02", tipoEnd: "Estático", vlan: "VLAN 0 — Gerência", subrede: "255.255.255.0", gateway: "—", dns1: "192.168.0.5", dns2: "8.8.8.8", dominio: "prefeitura.local", ou: "—", ingressado: false, ultimaSync: isoRel(0, 6, 1), statusDominio: "Não ingressado" },
+    historicoIP: ipHist([["192.168.0.2", "FW-BORDA-01", "90:6C:AC:02:00:02", "0", -500, "Manual"]]),
+    movimentacoes: [],
+    manutencoes: [],
+  },
+  {
+    id: "at10", patrimonio: "000520", codigoInterno: "DTI-ST-001", serie: "SYN-520", categoria: "Storage",
+    fabricante: "Synology", modelo: "RS1221+ (8 baias)", aquisicao: isoData(-260), valor: 21400, notaFiscal: "NF 15.560",
+    fornecedor: "Armazém Digital", garantiaFim: isoData(470), status: "Em Uso",
+    obs: "Storage de backup local (regra 3-2-1).", unidadeId: "un11", responsavelId: "u4",
+    predio: "Datacenter", sala: "Rack 3 — U10",
+    campos: { capacidade: "48 TB úteis", raid: "RAID 6", discos: "8× 12 TB NAS" },
+    rede: { hostname: "NAS-BACKUP-01", ipv4: "192.168.0.30", ipv6: "—", mac: "00:11:32:30:00:30", tipoEnd: "Estático", vlan: "VLAN 0 — Gerência DC", subrede: "255.255.255.0", gateway: "192.168.0.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "OU=Servidores,DC=prefeitura,DC=local", ingressado: false, ultimaSync: isoRel(0, 4, 0), statusDominio: "Não ingressado" },
+    historicoIP: ipHist([["192.168.0.30", "NAS-BACKUP-01", "00:11:32:30:00:30", "0", -260, "Manual"]]),
+    movimentacoes: [],
+    manutencoes: [],
+  },
+  {
+    id: "at11", patrimonio: "000298", codigoInterno: "DTI-D-090", serie: "DL0298BR", categoria: "Desktop",
+    fabricante: "Dell", modelo: "OptiPlex 3050", aquisicao: isoData(-2600), valor: 2900, notaFiscal: "NF 4.118",
+    fornecedor: "Dell Computadores do Brasil", garantiaFim: isoData(-1500), status: "Obsoleto",
+    obs: "Estação antiga — candidata à substituição pelo projeto de atualização do parque.", unidadeId: "un12", responsavelId: "u7",
+    predio: "Paço Municipal", sala: "Sala 24 — RH",
+    campos: { cpu: "Intel Core i3-6100", ram: "4 GB DDR4", storage: "HD 500 GB", gpu: "Intel HD 530", so: "Windows 10 Pro 21H2" },
+    rede: { hostname: "RH-PC-090", ipv4: "192.168.10.90", ipv6: "—", mac: "E4:B3:18:90:0A:12", tipoEnd: "DHCP", vlan: "VLAN 10 — Administração", subrede: "255.255.255.0", gateway: "192.168.10.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "OU=DRH,OU=Estacoes,DC=prefeitura,DC=local", ingressado: true, ultimaSync: isoRel(-6, 8, 20), statusDominio: "Desatualizado" },
+    historicoIP: ipHist([["192.168.10.90", "RH-PC-090", "E4:B3:18:90:0A:12", "10", -6, "DHCP"], ["192.168.10.77", "RH-PC-090", "E4:B3:18:90:0A:12", "10", -200, "DHCP"]]),
+    movimentacoes: [],
+    manutencoes: [
+      { id: "mn11a", tecnicoId: "u5", data: isoRel(-40), tipo: "Corretiva", descricao: "Lentidão extrema", diagnostico: "HD com setores defeituosos", solucao: "SSD instalado como paliativo", pecas: "SSD 240 GB", custo: 160, chamadoId: null, tempoMin: 50 },
+      { id: "mn11b", tecnicoId: "u5", data: isoRel(-160), tipo: "Corretiva", descricao: "Não liga", diagnostico: "Memória com mau contato", solucao: "Limpeza de contatos", pecas: "—", custo: 0, chamadoId: null, tempoMin: 20 },
+      { id: "mn11c", tecnicoId: "u5", data: isoRel(-300), tipo: "Corretiva", descricao: "Tela azul recorrente", diagnostico: "Driver de vídeo corrompido", solucao: "Reinstalação de driver", pecas: "—", custo: 0, chamadoId: null, tempoMin: 30 },
+      { id: "mn11d", tecnicoId: "u5", data: isoRel(-420), tipo: "Corretiva", descricao: "Teclado sem resposta", diagnostico: "Teclado danificado", solucao: "Teclado substituído", pecas: "Teclado USB", custo: 45, chamadoId: null, tempoMin: 15 },
+    ],
+  },
+  {
+    id: "at12", patrimonio: "000610", codigoInterno: "DTI-SP-004", serie: "MOT-610", categoria: "Smartphone",
+    fabricante: "Motorola", modelo: "Moto G84", aquisicao: isoData(-200), valor: 1750, notaFiscal: "NF 16.010",
+    fornecedor: "Telefonia Municipal", garantiaFim: isoData(530), status: "Emprestado",
+    obs: "Aparelho para plantão da Defesa Civil.", unidadeId: "un6", responsavelId: "u13",
+    predio: "SEOB", sala: "Plantão",
+    campos: {},
+    rede: null,
+    historicoIP: [],
+    movimentacoes: [{ origem: "DTI — Estoque", destino: "SEOB — Plantão", responsavelAnterior: "Estoque", novoResponsavel: "Renata Barbosa Farias", data: isoRel(-180), usuario: "Mariana Lopes Siqueira", motivo: "Termo de responsabilidade nº 2026-064" }],
+    manutencoes: [],
+  },
+  {
+    id: "at13", patrimonio: "000655", codigoInterno: "DTI-M-120", serie: "LG24-655", categoria: "Monitor",
+    fabricante: "LG", modelo: "24MK430 23,8\"", aquisicao: isoData(-90), valor: 780, notaFiscal: "NF 16.440",
+    fornecedor: "Kalunga S.A.", garantiaFim: isoData(1000), status: "Em Estoque",
+    obs: "Lote da reposição de monitores — aguardando demanda.", unidadeId: "un11", responsavelId: null,
+    predio: "Almoxarifado TI", sala: "Prateleira C-2",
+    campos: {},
+    rede: null,
+    historicoIP: [],
+    movimentacoes: [{ origem: "Fornecedor", destino: "Almoxarifado TI", responsavelAnterior: "Kalunga S.A.", novoResponsavel: "Estoque", data: isoRel(-85), usuario: "Mariana Lopes Siqueira", motivo: "Recebimento NF 16.440" }],
+    manutencoes: [],
+  },
+  {
+    id: "at14", patrimonio: "000701", codigoInterno: "DTI-SC-002", serie: "EPSON-701", categoria: "Scanner",
+    fabricante: "Epson", modelo: "WorkForce DS-530 II", aquisicao: isoData(-450), valor: 3150, notaFiscal: "NF 14.305",
+    fornecedor: "Armazém Digital", garantiaFim: isoData(280), status: "Em Uso",
+    obs: "Digitalização de processos físicos do protocolo.", unidadeId: "un13", responsavelId: "u8",
+    predio: "Paço Municipal", sala: "Protocolo Central",
+    campos: {},
+    rede: null,
+    historicoIP: [],
+    movimentacoes: [],
+    manutencoes: [{ id: "mn14a", tecnicoId: "u5", data: isoRel(-60), tipo: "Preventiva", descricao: "Limpeza dos rolos de alimentação", diagnostico: "Marcas de arraste nas digitalizações", solucao: "Rolos e vidros limpos", pecas: "—", custo: 0, chamadoId: null, tempoMin: 20 }],
+  },
+  {
+    id: "at15", patrimonio: "000533", codigoInterno: "DTI-TF-009", serie: "GRC-TF-533", categoria: "Telefone IP",
+    fabricante: "Grandstream", modelo: "GRP2614", aquisicao: isoData(-550), valor: 690, notaFiscal: "NF 13.980",
+    fornecedor: "Telefonia Municipal", garantiaFim: isoData(180), status: "Em Uso",
+    obs: "Ramal 6121 — Gabinete RH.", unidadeId: "un12", responsavelId: "u7",
+    predio: "Paço Municipal", sala: "Gabinete RH",
+    campos: {},
+    rede: { hostname: "TEL-6121", ipv4: "192.168.50.21", ipv6: "—", mac: "C0:74:AD:21:50:15", tipoEnd: "DHCP", vlan: "VLAN 50 — Voz", subrede: "255.255.255.0", gateway: "192.168.50.1", dns1: "192.168.0.5", dns2: "192.168.0.6", dominio: "prefeitura.local", ou: "—", ingressado: false, ultimaSync: isoRel(0, 6, 0), statusDominio: "Não ingressado" },
+    historicoIP: ipHist([["192.168.50.21", "TEL-6121", "C0:74:AD:21:50:15", "50", -3, "DHCP"]]),
+    movimentacoes: [],
+    manutencoes: [{ id: "mn15a", tecnicoId: "u5", data: isoRel(-4), tipo: "Corretiva", descricao: "Sem tom de discagem", diagnostico: "Rota de saída incorreta na central", solucao: "Rota corrigida e registro renovado", pecas: "—", custo: 0, chamadoId: "TI-2026-000003", tempoMin: 25 }],
+  },
+  {
+    id: "at16", patrimonio: "000045", codigoInterno: "DTI-RT-001", serie: "CSC-RT-045", categoria: "Roteador",
+    fabricante: "Cisco", modelo: "ISR 4331", aquisicao: isoData(-2200), valor: 45600, notaFiscal: "NF 6.777",
+    fornecedor: "Cisco do Brasil", garantiaFim: isoData(-1100), status: "Baixado",
+    obs: "Roteador de borda substituído pelo firewall com funções de roteamento.", unidadeId: "un11", responsavelId: null,
+    predio: "Almoxarifado TI", sala: "Descarte — aguardando leilão",
+    campos: {},
+    rede: null,
+    historicoIP: ipHist([["192.168.0.1", "RT-BORDA-ANTIGO", "00:25:84:01:00:01", "0", -1100, "Manual"]]),
+    movimentacoes: [{ origem: "Datacenter — Rack 1", destino: "Almoxarifado TI", responsavelAnterior: "Juliana Freitas Almeida", novoResponsavel: "Estoque", data: isoRel(-1100), usuario: "Carlos Eduardo Menezes", motivo: "Baixa patrimonial — substituição tecnológica" }],
+    manutencoes: [],
+  },
+];
+
+export interface CampanhaInventario {
+  id: string; nome: string; periodo: string; responsavelId: string;
+  itens: { patrimonioId: string; resultado: "Localizado" | "Não Localizado" | "Movido" | "Dados Divergentes" | "Em Manutenção" | "Baixado" }[];
+}
+export const INVENTARIO_SEED: CampanhaInventario[] = [
+  {
+    id: "inv1", nome: "Inventário de TI 2026", periodo: "01/10/2026 a 31/10/2026", responsavelId: "u5",
+    itens: [
+      { patrimonioId: "at1", resultado: "Localizado" }, { patrimonioId: "at2", resultado: "Movido" },
+      { patrimonioId: "at3", resultado: "Localizado" }, { patrimonioId: "at4", resultado: "Localizado" },
+      { patrimonioId: "at5", resultado: "Localizado" }, { patrimonioId: "at6", resultado: "Dados Divergentes" },
+      { patrimonioId: "at7", resultado: "Em Manutenção" }, { patrimonioId: "at8", resultado: "Localizado" },
+      { patrimonioId: "at9", resultado: "Localizado" }, { patrimonioId: "at10", resultado: "Localizado" },
+      { patrimonioId: "at11", resultado: "Localizado" }, { patrimonioId: "at12", resultado: "Não Localizado" },
+      { patrimonioId: "at13", resultado: "Localizado" }, { patrimonioId: "at14", resultado: "Localizado" },
+      { patrimonioId: "at15", resultado: "Localizado" }, { patrimonioId: "at16", resultado: "Baixado" },
+    ],
+  },
+];
+
+export interface LicencaSoftware { id: string; software: string; fornecedor: string; tipo: string; total: number; usadas: number; vencimento: string; contrato: string; }
+export const LICENCAS_SEED: LicencaSoftware[] = [
+  { id: "lc1", software: "Microsoft 365 A3", fornecedor: "Microsoft", tipo: "Assinatura anual", total: 350, usadas: 289, vencimento: isoData(210), contrato: "CT-2025-014" },
+  { id: "lc2", software: "Windows 11 Pro", fornecedor: "Microsoft", tipo: "OEM vitalícia", total: 450, usadas: 418, vencimento: isoData(3000), contrato: "Diversos" },
+  { id: "lc3", software: "Kaspersky EDR", fornecedor: "Kaspersky", tipo: "Assinatura anual", total: 500, usadas: 486, vencimento: isoData(64), contrato: "CT-2026-002" },
+  { id: "lc4", software: "Adobe Acrobat Pro", fornecedor: "Adobe", tipo: "Assinatura mensal", total: 25, usadas: 25, vencimento: isoData(21), contrato: "CT-2024-031" },
+  { id: "lc5", software: "AutoCAD LT", fornecedor: "Autodesk", tipo: "Assinatura anual", total: 5, usadas: 3, vencimento: isoData(150), contrato: "CT-2025-009" },
+  { id: "lc6", software: "Zabbix Enterprise", fornecedor: "Zabbix SIA", tipo: "Suporte anual", total: 1, usadas: 1, vencimento: isoData(320), contrato: "CT-2026-005" },
+];
+
+export interface ArtigoBase { id: string; titulo: string; categoria: string; conteudo: string; autorId: string; status: "Publicado" | "Rascunho"; visibilidade: "Todos" | "Somente TI"; atualizadoEm: string; }
+export const BASE_CONHECIMENTO_SEED: ArtigoBase[] = [
+  { id: "kb1", titulo: "Como redefinir minha senha", categoria: "Usuários e Senhas", conteudo: "1. Acesse o Portal Interno e clique em “Esqueci minha senha”.\n2. Informe sua matrícula e confirme o ramal cadastrado.\n3. Você receberá uma senha provisória no e-mail institucional.\n4. No primeiro acesso, o sistema solicitará a criação de uma nova senha com no mínimo 8 caracteres.\n\nCaso não tenha e-mail cadastrado, abra um chamado na Central de Serviços.", autorId: "u5", status: "Publicado", visibilidade: "Todos", atualizadoEm: isoRel(-40) },
+  { id: "kb2", titulo: "Como acessar a pasta de rede da minha equipe", categoria: "Arquivos e Pastas", conteudo: "1. Abra o Explorador de Arquivos e clique em “Rede”.\n2. Navegue até \\\\arquivos\\sua-secretaria.\n3. Se a pasta não aparecer, verifique se você está conectado à rede corporativa (cabo ou Wi-Fi Prefeitura-Corporativa).\n4. Sem permissão? Peça ao gestor da sua unidade que solicite o acesso via catálogo (Solicitar Acesso).", autorId: "u4", status: "Publicado", visibilidade: "Todos", atualizadoEm: isoRel(-90) },
+  { id: "kb3", titulo: "Como instalar uma impressora de rede", categoria: "Impressoras", conteudo: "1. Vá em Configurações → Dispositivos → Impressoras e scanners.\n2. Clique em “Adicionar uma impressora” e aguarde a detecção.\n3. Se não aparecer, clique em “A impressora desejada não está na lista” e informe o caminho: \\\\IMP-DCOMP-01\\compartilhamento.\n4. Imprima uma página de teste.\n\nDrivers homologados estão na pasta \\\\arquivos\\dti\\drivers.", autorId: "u5", status: "Publicado", visibilidade: "Todos", atualizadoEm: isoRel(-120) },
+  { id: "kb4", titulo: "Como solicitar acesso a um sistema", categoria: "Acesso a Sistemas", conteudo: "1. Acesse a Central de Serviços de TI e escolha o serviço “Solicitar Acesso”.\n2. Informe o sistema, o perfil desejado e a justificativa.\n3. A solicitação passará pela aprovação do gestor da sua secretaria.\n4. Você será notificado no GovFlow quando o acesso for concedido.\n\nPerfis administrativos exigem aprovação adicional da Segurança da Informação.", autorId: "u1", status: "Publicado", visibilidade: "Todos", atualizadoEm: isoRel(-15) },
+  { id: "kb5", titulo: "Procedimento de backup dos servidores", categoria: "Infraestrutura", conteudo: "Rotina diária: 22h — snapshot das VMs críticas (RTO 4h / RPO 24h).\nRotina semanal: domingo 01h — cópia completa para o NAS-BACKUP-01.\nMensal: fita LTO enviada ao cofre da agência central.\n\nA verificação de integridade é automática e gera alerta no canal #infraestrutura em caso de falha.", autorId: "u4", status: "Publicado", visibilidade: "Somente TI", atualizadoEm: isoRel(-60) },
+  { id: "kb6", titulo: "Checklist de recebimento de equipamentos", categoria: "Patrimônio", conteudo: "1. Conferir nota fiscal × ordem de fornecimento.\n2. Registrar número de série e patrimônio no GovFlow.\n3. Aplicar etiqueta patrimonial e QR Code.\n4. Instalar imagem corporativa e ingressar no domínio.\n5. Gerar termo de responsabilidade e coletar assinatura.", autorId: "u5", status: "Rascunho", visibilidade: "Somente TI", atualizadoEm: isoRel(-5) },
+];

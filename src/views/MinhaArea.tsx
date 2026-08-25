@@ -1,299 +1,341 @@
-import { useMemo, useState } from "react";
-import { Avatar, Barra, Chip, Contador, Icon, PrioridadeChip, Reveal, Scramble, StatusChip, useToast } from "../components/ui";
-import { STATUS_TAREFA, TOM_CSS } from "../lib/data";
-import { DIAS_CURTO, MESES, diasAte, fmtData, fmtHora, fmtNum, fmtPct, mesmaData, tempoRel } from "../lib/format";
+import { useState } from "react";
+import { Avatar, Chip, Icon, Reveal, Scramble, StatusChamadoChip, StatusChip, PrioridadeChip, useToast } from "../components/ui";
+import { fmtData, fmtNum, saudacao, tempoRel } from "../lib/format";
 import { useApp } from "../lib/store";
 
-function Cartao({ titulo, icone, children, acao, atraso = 0 }: { titulo: string; icone: string; children: React.ReactNode; acao?: React.ReactNode; atraso?: number }) {
-  return (
-    <Reveal delay={atraso} className="h-full">
-      <div className="card p-5 h-full flex flex-col">
-        <div className="flex items-center justify-between mb-3 flex-none">
-          <h3 className="font-display font-bold text-[15.5px] m-0 flex items-center gap-2">
-            <span style={{ color: "var(--green)" }}><Icon name={icone} size={17} /></span> {titulo}
-          </h3>
-          {acao}
-        </div>
-        <div className="flex-1 min-h-0">{children}</div>
-      </div>
-    </Reveal>
-  );
-}
-
-export default function MinhaArea() {
-  const app = useApp();
-  const { atual, tarefas, projetos, demandas, equipes, unidades, usuarios, eventos, notificacoes, documentos, mudarStatusDemanda, moverTarefa, marcarNotificacoesLidas } = app;
+export default function MinhaArea({ irPara }: { irPara: (v: string) => void }) {
+  const { atual, tarefas, projetos, demandas, equipes, usuarios, unidades, eventos, notificacoes, marcarNotificacoesLidas, chamados, decidirAprovacao } = useApp();
   const toast = useToast();
-  const [abaTarefas, setAbaTarefas] = useState("ativas");
+  const [comentarioAprov, setComentarioAprov] = useState("");
 
-  const minhasTarefas = useMemo(() => tarefas.filter((t) => t.responsavelId === atual.id), [tarefas, atual.id]);
-  const meusProjetos = useMemo(() => projetos.filter((p) => p.responsavelId === atual.id), [projetos, atual.id]);
-  const minhasDemandas = useMemo(() => demandas.filter((d) => d.responsavelId === atual.id || d.solicitanteId === atual.id), [demandas, atual.id]);
+  const minhasTarefas = tarefas.filter((t) => t.responsavelId === atual.id && t.status !== "Concluído");
+  const meusProjetos = projetos.filter((p) => p.responsavelId === atual.id);
+  const minhasDemandas = demandas.filter((d) => d.responsavelId === atual.id && !["Concluída", "Recusada", "Cancelada"].includes(d.status));
   const minhaEquipe = equipes.find((e) => e.liderId === atual.id || e.membroIds.includes(atual.id));
-  const pendencias = minhasTarefas.filter((t) => t.status !== "Concluído" && (diasAte(t.prazo) < 0 || t.status === "Aguardando"));
-  const aprovacoesDemandas = demandas.filter((d) => d.status === "Em Análise" && d.responsavelId === atual.id);
-  const aprovacoesDocs = documentos.filter((d) => d.status === "Em revisão");
-  const bloqueadas = minhasTarefas.filter((t) => t.status === "Bloqueado");
-  const meusPrazos = minhasTarefas.filter((t) => t.status !== "Concluído").sort((a, b) => +new Date(a.prazo) - +new Date(b.prazo));
+  const meusChamados = chamados.filter((c) => c.solicitanteId === atual.id || c.tecnicoId === atual.id).slice(0, 5);
+  const pendenciasAprovacao = chamados.filter((c) => c.status === "Aguardando Aprovação" && c.aprovacoes.some((a) => a.status === "Pendente" && a.aprovadorNome === atual.nome));
+  const bloqueadas = tarefas.filter((t) => t.status === "Bloqueado");
+  const prazos = tarefas
+    .filter((t) => t.responsavelId === atual.id && t.status !== "Concluído")
+    .sort((a, b) => a.prazo.localeCompare(b.prazo))
+    .slice(0, 5);
 
-  const hoje = new Date();
-  const diasMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
-  const primeiroDow = new Date(hoje.getFullYear(), hoje.getMonth(), 1).getDay();
+  const nomeDe = (id: string) => usuarios.find((u) => u.id === id);
+  const lotacao = unidades.find((u) => u.id === atual.unidadeId);
 
-  const unidade = unidades.find((u) => u.id === atual.unidadeId);
-  const membros = minhaEquipe ? usuarios.filter((u) => minhaEquipe.membroIds.includes(u.id)) : [];
-
-  const listaTarefas = abaTarefas === "ativas" ? minhasTarefas.filter((t) => t.status !== "Concluído") : minhasTarefas.filter((t) => t.status === "Concluído");
+  const decidir = (chamadoId: string, etapaId: string, decisao: "Aprovado" | "Rejeitado") => {
+    decidirAprovacao(chamadoId, etapaId, decisao, comentarioAprov || (decisao === "Aprovado" ? "Aprovado sem ressalvas." : ""));
+    toast(decisao === "Aprovado" ? "Aprovação registrada" : "Solicitação rejeitada", decisao === "Aprovado" ? "verde" : "vermelho");
+    setComentarioAprov("");
+  };
 
   return (
-    <div className="space-y-5">
-      {/* Cabeçalho pessoal */}
-      <Reveal>
-        <div className="card overflow-hidden">
-          <div className="hazard h-[4px]" />
-          <div className="p-6 flex flex-wrap items-center gap-5">
-            <Avatar nome={atual.nome} size={64} />
-            <div className="min-w-0 flex-1">
-              <div className="ovl mb-1">Servidora municipal · {unidade?.sigla} ({unidade?.nome})</div>
-              <h2 className="font-display font-extrabold text-[28px] leading-tight m-0 tracking-tight"><Scramble texto={atual.nome} /></h2>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-[12.5px]" style={{ color: "var(--muted)" }}>
-                <span className="flex items-center gap-1.5"><Icon name="usuario" size={14} /> {atual.cargo}</span>
-                <span className="flex items-center gap-1.5"><Icon name="documentos" size={14} /> Matrícula {atual.matricula}</span>
-                <span className="flex items-center gap-1.5"><Icon name="sino" size={14} /> Ramal {atual.ramal}</span>
+    <div>
+      {/* Cabeçalho personalizado */}
+      <div className="card overflow-hidden mb-5">
+        <div className="hazard h-[5px]" />
+        <div className="flex flex-wrap items-center gap-4 px-6 py-5" style={{ background: "linear-gradient(120deg, rgba(30,122,84,0.08), transparent 55%)" }}>
+          <Avatar nome={atual.nome} size={56} />
+          <div className="flex-1 min-w-[220px]">
+            <h2 className="font-display font-extrabold text-[24px] m-0 tracking-tight">
+              <Scramble texto={`${saudacao()}, ${atual.nome.split(" ")[0]}!`} />
+            </h2>
+            <p className="text-[13px] m-0 mt-1" style={{ color: "var(--muted)" }}>
+              {atual.cargo} · {lotacao?.nome} · matrícula {atual.matricula} · ramal {atual.ramal}
+            </p>
+          </div>
+          <div className="flex gap-2.5 flex-wrap">
+            {[
+              [fmtNum(minhasTarefas.length), "tarefas abertas", "var(--blue)"],
+              [fmtNum(pendenciasAprovacao.length), "aprovações pendentes", "var(--amber)"],
+              [fmtNum(meusChamados.length), "chamados recentes", "var(--cyan)"],
+              [fmtNum(bloqueadas.length), "bloqueadas", "var(--red)"],
+            ].map(([n, r, cor]) => (
+              <div key={r} className="rounded-lg px-4 py-2.5 text-center" style={{ background: "#fff", border: "1px solid var(--line)" }}>
+                <div className="font-display font-extrabold text-[20px] leading-none tabular-nums" style={{ color: cor }}>{n}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider mt-1" style={{ color: "var(--muted)" }}>{r}</div>
               </div>
-            </div>
-            <div className="flex gap-6">
-              {[
-                { r: "Tarefas abertas", v: minhasTarefas.filter((t) => t.status !== "Concluído").length, c: "var(--ink)" },
-                { r: "Em atraso", v: minhasTarefas.filter((t) => t.status !== "Concluído" && diasAte(t.prazo) < 0).length, c: "var(--red)" },
-                { r: "Demandas comigo", v: demandas.filter((d) => d.responsavelId === atual.id && !["Concluída", "Recusada", "Cancelada"].includes(d.status)).length, c: "var(--blue)" },
-              ].map((k) => (
-                <div key={k.r} className="text-center">
-                  <div className="font-display font-extrabold text-[30px] leading-none" style={{ color: k.c }}><Contador valor={k.v} /></div>
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider mt-1" style={{ color: "var(--muted)" }}>{k.r}</div>
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
         </div>
-      </Reveal>
+      </div>
 
-      {/* Grade de widgets */}
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-        <Cartao titulo="Minhas Tarefas" icone="tarefas" atraso={40}
-          acao={
-            <div className="flex gap-1 p-0.5 rounded-md" style={{ background: "rgba(19,37,29,0.06)" }}>
-              {([["ativas", "Ativas"], ["feitas", "Concluídas"]] as const).map(([k, r]) => (
-                <button key={k} className="px-2.5 py-1 rounded text-[11.5px] font-bold cursor-pointer border-0" style={abaTarefas === k ? { background: "var(--card)", boxShadow: "var(--shadow-1)" } : { background: "transparent", color: "var(--muted)" }} onClick={() => setAbaTarefas(k)}>{r}</button>
-              ))}
-            </div>
-          }
-        >
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {STATUS_TAREFA.map((s) => {
-              const qtd = minhasTarefas.filter((t) => t.status === s.label).length;
-              if (qtd === 0) return null;
-              return <Chip key={s.label} tom={s.tom}>{s.label}: {fmtNum(qtd)}</Chip>;
-            })}
-          </div>
-          <ul className="space-y-2 m-0 p-0 list-none">
-            {listaTarefas.slice(0, 5).map((t) => (
-              <li key={t.id} className="flex items-center gap-2.5 py-1">
-                <span className="w-1.5 h-1.5 rounded-full flex-none" style={{ background: TOM_CSS[STATUS_TAREFA.find((s) => s.label === t.status)?.tom ?? "cinza"].fg }} />
-                <span className={`flex-1 text-[12.5px] font-semibold truncate ${t.status === "Concluído" ? "line-through opacity-60" : ""}`}>{t.titulo}</span>
-                <PrioridadeChip p={t.prioridade} />
-              </li>
-            ))}
-            {listaTarefas.length === 0 && <li className="text-[12.5px]" style={{ color: "var(--muted)" }}>Nenhuma tarefa nesta visão. Bom trabalho!</li>}
-          </ul>
-        </Cartao>
-
-        <Cartao titulo="Meus Projetos" icone="projetos" atraso={80}>
-          <div className="space-y-4">
-            {meusProjetos.map((p) => (
-              <div key={p.id}>
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-[13px] font-bold truncate">{p.nome}</span>
-                  <StatusChip s={p.status} />
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1"><Barra valor={p.progresso} cor={p.saude === "Crítico" ? "var(--red)" : "var(--green)"} /></div>
-                  <span className="text-[12px] font-bold tabular-nums">{fmtPct(p.progresso)}</span>
-                  <span className="text-[11px] tabular-nums" style={{ color: "var(--muted)" }}>{fmtData(p.prazo)}</span>
-                </div>
+      <div className="grid xl:grid-cols-3 gap-4 items-start">
+        {/* Coluna 1 */}
+        <div className="space-y-4">
+          <Reveal>
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="ovl">Minhas Tarefas — {fmtNum(minhasTarefas.length)}</div>
+                <button className="btn btn-ghost !py-1 text-[11.5px]" onClick={() => irPara("tarefas")}>Ver todas</button>
               </div>
-            ))}
-          </div>
-        </Cartao>
-
-        <Cartao titulo="Minhas Demandas" icone="demandas" atraso={120}>
-          <ul className="space-y-2.5 m-0 p-0 list-none">
-            {minhasDemandas.slice(0, 5).map((d) => (
-              <li key={d.id} className="flex items-center gap-2.5">
-                <span className="text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded flex-none" style={{ background: "rgba(19,37,29,0.06)", color: "var(--muted)" }}>{d.protocolo.replace("DEM-2026-", "#")}</span>
-                <span className="flex-1 text-[12.5px] font-semibold truncate">{d.tipo}</span>
-                <StatusChip s={d.status} />
-              </li>
-            ))}
-          </ul>
-        </Cartao>
-
-        <Cartao titulo="Meu Calendário" icone="calendario" atraso={40}>
-          <div className="text-center font-display font-bold text-[13.5px] capitalize mb-2">{MESES[hoje.getMonth()]} {hoje.getFullYear()}</div>
-          <div className="grid grid-cols-7 gap-1 text-center text-[10.5px] font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>
-            {DIAS_CURTO.map((d) => <span key={d}>{d}</span>)}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {Array.from({ length: primeiroDow }).map((_, i) => <span key={`v${i}`} />)}
-            {Array.from({ length: diasMes }).map((_, i) => {
-              const dia = i + 1;
-              const data = new Date(hoje.getFullYear(), hoje.getMonth(), dia);
-              const temEvento = eventos.some((e) => mesmaData(new Date(e.data + "T12:00:00"), data));
-              const temPrazo = minhasTarefas.some((t) => mesmaData(new Date(t.prazo), data));
-              const ehHoje = mesmaData(data, hoje);
-              return (
-                <span
-                  key={dia}
-                  className="relative aspect-square flex items-center justify-center rounded-md text-[11.5px] font-semibold"
-                  style={ehHoje ? { background: "var(--deep)", color: "#f2b70a" } : { color: "var(--ink)" }}
-                >
-                  {dia}
-                  {(temEvento || temPrazo) && !ehHoje && <span className="absolute bottom-[3px] w-1 h-1 rounded-full" style={{ background: temPrazo ? "var(--red)" : "var(--green)" }} />}
-                </span>
-              );
-            })}
-          </div>
-          <div className="flex gap-4 mt-3 text-[10.5px] font-semibold" style={{ color: "var(--muted)" }}>
-            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--green)" }} /> Evento</span>
-            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--red)" }} /> Prazo de tarefa</span>
-          </div>
-        </Cartao>
-
-        <Cartao titulo="Meus Prazos" icone="relogio" atraso={80}>
-          <ul className="space-y-2 m-0 p-0 list-none">
-            {meusPrazos.slice(0, 6).map((t) => {
-              const d = diasAte(t.prazo);
-              return (
-                <li key={t.id} className="flex items-center gap-2.5">
-                  <span className="flex-1 text-[12.5px] font-semibold truncate">{t.titulo}</span>
-                  <Chip tom={d < 0 ? "vermelho" : d <= 2 ? "ambar" : "cinza"} dot={false}>
-                    {d < 0 ? `Em atraso (${fmtNum(Math.abs(d))} d)` : d === 0 ? "Vence hoje" : `${fmtData(t.prazo)} · ${fmtHora(t.prazo)}`}
-                  </Chip>
-                </li>
-              );
-            })}
-            {meusPrazos.length === 0 && <li className="text-[12.5px]" style={{ color: "var(--muted)" }}>Nenhum prazo pendente.</li>}
-          </ul>
-        </Cartao>
-
-        <Cartao titulo="Minhas Notificações" icone="sino" atraso={120}
-          acao={<button className="text-[11.5px] font-bold cursor-pointer bg-transparent border-0" style={{ color: "var(--green)" }} onClick={() => { marcarNotificacoesLidas(); toast("Notificações marcadas como lidas", "verde"); }}>Marcar lidas</button>}
-        >
-          <ul className="space-y-2.5 m-0 p-0 list-none">
-            {notificacoes.slice(0, 5).map((n) => (
-              <li key={n.id} className="flex gap-2.5">
-                <span className="mt-[5px] w-2 h-2 rounded-full flex-none" style={{ background: n.lida ? "var(--line-2)" : TOM_CSS[n.tom].fg }} />
-                <div className="min-w-0">
-                  <div className={`text-[12.5px] leading-snug ${n.lida ? "opacity-65" : "font-bold"}`}>{n.titulo}</div>
-                  <div className="text-[11px] truncate" style={{ color: "var(--muted)" }}>{n.detalhe} · {tempoRel(n.data)}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Cartao>
-
-        <Cartao titulo="Pendências" icone="aviso" atraso={40}>
-          {pendencias.length === 0 ? (
-            <p className="text-[12.5px] m-0" style={{ color: "var(--muted)" }}>Nenhuma pendência crítica no momento.</p>
-          ) : (
-            <ul className="space-y-2 m-0 p-0 list-none">
-              {pendencias.map((t) => (
-                <li key={t.id} className="flex items-center gap-2.5 py-1 rounded-md px-2" style={{ background: diasAte(t.prazo) < 0 ? "var(--red-soft)" : "var(--amber-soft)" }}>
-                  <Icon name={diasAte(t.prazo) < 0 ? "aviso" : "relogio"} size={15} className={diasAte(t.prazo) < 0 ? "text-[var(--red)]" : "text-[var(--amber)]"} />
-                  <span className="flex-1 text-[12.5px] font-semibold truncate">{t.titulo}</span>
-                  <span className="text-[11px] font-bold" style={{ color: diasAte(t.prazo) < 0 ? "var(--red)" : "var(--amber)" }}>
-                    {diasAte(t.prazo) < 0 ? "Prazo vencido" : "Aguardando terceiro"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Cartao>
-
-        <Cartao titulo="Aprovações Pendentes" icone="check" atraso={80}>
-          <div className="space-y-3">
-            {aprovacoesDemandas.map((d) => (
-              <div key={d.id} className="rounded-lg p-3" style={{ border: "1px solid var(--line)", background: "rgba(242,183,10,0.05)" }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-bold tabular-nums" style={{ color: "var(--muted)" }}>{d.protocolo}</span>
-                  <StatusChip s={d.status} />
-                </div>
-                <div className="text-[12.5px] font-bold mb-2">{d.tipo}</div>
-                <div className="flex gap-2">
-                  <button className="btn btn-primary !py-1.5 !px-3 text-[12px] flex-1" onClick={() => { mudarStatusDemanda(d.id, "Aceita", "Aprovada na Minha Área"); toast("Demanda aprovada", "verde", d.protocolo); }}>Aprovar</button>
-                  <button className="btn btn-outline !py-1.5 !px-3 text-[12px] flex-1" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={() => { mudarStatusDemanda(d.id, "Recusada", "Recusada na Minha Área"); toast("Demanda recusada", "ambar", d.protocolo); }}>Recusar</button>
-                </div>
-              </div>
-            ))}
-            {aprovacoesDocs.map((doc) => (
-              <div key={doc.id} className="rounded-lg p-3 flex items-center gap-3" style={{ border: "1px solid var(--line)" }}>
-                <Icon name="documentos" size={18} className="text-[var(--green)] flex-none" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12.5px] font-bold truncate">{doc.nome}</div>
-                  <div className="text-[11px]" style={{ color: "var(--muted)" }}>Versão {doc.versao} · aguarda revisão</div>
-                </div>
-                <button className="btn btn-outline !py-1.5 !px-3 text-[12px]" onClick={() => toast("Documento aprovado", "verde", `${doc.nome} — v${doc.versao}`)}>Aprovar</button>
-              </div>
-            ))}
-            {aprovacoesDemandas.length === 0 && aprovacoesDocs.length === 0 && <p className="text-[12.5px] m-0" style={{ color: "var(--muted)" }}>Nada aguardando sua aprovação.</p>}
-          </div>
-        </Cartao>
-
-        <Cartao titulo="Atividades Bloqueadas" icone="riscos" atraso={120}>
-          {bloqueadas.length === 0 ? (
-            <p className="text-[12.5px] m-0" style={{ color: "var(--muted)" }}>Nenhuma atividade bloqueada sob sua responsabilidade.</p>
-          ) : (
-            <div className="space-y-3">
-              {bloqueadas.map((t) => (
-                <div key={t.id} className="rounded-lg p-3" style={{ border: "1px solid var(--line)", borderLeft: "3px solid var(--red)" }}>
-                  <div className="text-[12.5px] font-bold">{t.titulo}</div>
-                  <div className="text-[11.5px] mt-1 flex items-start gap-1.5" style={{ color: "var(--red)" }}>
-                    <Icon name="cadeado" size={13} className="mt-0.5 flex-none" /> {t.bloqueioMotivo ?? "Motivo não informado"}
+              <div className="space-y-2">
+                {minhasTarefas.slice(0, 5).map((t) => (
+                  <div key={t.id} className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 hover:translate-x-0.5 transition-transform" style={{ background: "rgba(19,37,29,0.035)" }}>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[12.5px] font-bold truncate">{t.titulo}</span>
+                      <span className="block text-[10.5px]" style={{ color: "var(--muted)" }}>Prazo {fmtData(t.prazo)}</span>
+                    </span>
+                    <PrioridadeChip p={t.prioridade} />
+                    <StatusChip s={t.status} />
                   </div>
-                  <button className="btn btn-outline !py-1.5 !px-3 text-[12px] mt-2.5" onClick={() => { moverTarefa(t.id, "Em Andamento"); toast("Atividade desbloqueada", "verde", t.titulo); }}>
-                    <Icon name="check" size={14} /> Desbloquear
+                ))}
+                {minhasTarefas.length === 0 && <p className="text-[12px] m-0" style={{ color: "var(--muted)" }}>Nenhuma tarefa aberta. Bom trabalho!</p>}
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal delay={60}>
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="ovl">Meus Chamados</div>
+                <button className="btn btn-ghost !py-1 text-[11.5px]" onClick={() => irPara("central-ti")}>Central de Serviços</button>
+              </div>
+              <div className="space-y-2">
+                {meusChamados.map((c) => (
+                  <button key={c.id} className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left cursor-pointer border-0 transition-transform hover:translate-x-0.5" style={{ background: "rgba(19,37,29,0.035)" }} onClick={() => irPara("central-ti")}>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[12.5px] font-bold truncate">{c.titulo}</span>
+                      <span className="block text-[10.5px] tabular-nums" style={{ color: "var(--muted)" }}>{c.numero} · {tempoRel(c.criadoEm)}</span>
+                    </span>
+                    <StatusChamadoChip s={c.status} />
                   </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </Cartao>
-
-        <Cartao titulo="Minha Equipe" icone="equipes" atraso={60} acao={minhaEquipe ? <Chip tom="verde" dot={false}>{minhaEquipe.nome}</Chip> : undefined}>
-          <div className="space-y-3">
-            {membros.map((m) => {
-              const carga = tarefas.filter((t) => t.responsavelId === m.id && t.status !== "Concluído").length;
-              return (
-                <div key={m.id} className="flex items-center gap-3">
-                  <Avatar nome={m.nome} size={34} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] font-bold truncate">{m.nome} {m.id === minhaEquipe?.liderId && <span className="text-[10px] font-bold uppercase tracking-wider ml-1 px-1.5 py-0.5 rounded" style={{ background: "var(--yellow-soft)", color: "var(--accent-ink)" }}>Líder</span>}</div>
-                    <div className="text-[11px] truncate" style={{ color: "var(--muted)" }}>{m.cargo}</div>
-                  </div>
-                  <div className="w-[72px] flex-none">
-                    <Barra valor={Math.min(100, carga * 16)} cor={carga > 5 ? "var(--amber)" : "var(--green)"} altura={5} />
-                    <div className="text-[10px] font-bold mt-0.5 text-right" style={{ color: "var(--muted)" }}>{fmtNum(carga)} tarefas</div>
-                  </div>
-                </div>
-              );
-            })}
-            {minhaEquipe && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {minhaEquipe.especialidades.map((e) => <Chip key={e} tom="cinza" dot={false}>{e}</Chip>)}
+                ))}
+                {meusChamados.length === 0 && <p className="text-[12px] m-0" style={{ color: "var(--muted)" }}>Nenhum chamado recente.</p>}
               </div>
-            )}
-          </div>
-        </Cartao>
+            </div>
+          </Reveal>
+
+          <Reveal delay={100}>
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="ovl">Meus Prazos</div>
+                <button className="btn btn-ghost !py-1 text-[11.5px]" onClick={() => irPara("calendario")}>Calendário</button>
+              </div>
+              <div className="space-y-2">
+                {prazos.map((t) => {
+                  const d = new Date(t.prazo).getTime() - Date.now();
+                  const dias = Math.ceil(d / 86400000);
+                  return (
+                    <div key={t.id} className="flex items-center gap-2.5">
+                      <span className="w-9 h-9 rounded-lg flex items-center justify-center font-display font-extrabold text-[13px] flex-none tabular-nums"
+                        style={{ background: dias < 0 ? "var(--red-soft)" : dias <= 1 ? "var(--amber-soft)" : "var(--green-soft)", color: dias < 0 ? "var(--red)" : dias <= 1 ? "var(--amber)" : "var(--green)" }}>
+                        {dias < 0 ? `-${fmtNum(Math.abs(dias))}` : fmtNum(dias)}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[12px] font-bold truncate">{t.titulo}</span>
+                        <span className="block text-[10.5px]" style={{ color: "var(--muted)" }}>{fmtData(t.prazo)} {dias < 0 ? "· vencido" : dias === 0 ? "· hoje" : dias === 1 ? "· amanhã" : ""}</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </Reveal>
+        </div>
+
+        {/* Coluna 2 */}
+        <div className="space-y-4">
+          <Reveal delay={40}>
+            <div className="card p-5" style={{ borderColor: pendenciasAprovacao.length > 0 ? "rgba(242,183,10,0.5)" : undefined }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="ovl" style={{ color: pendenciasAprovacao.length > 0 ? "var(--accent-2)" : undefined }}>
+                  Aprovações Pendentes — {fmtNum(pendenciasAprovacao.length)}
+                </div>
+                <button className="btn btn-ghost !py-1 text-[11.5px]" onClick={() => irPara("aprovacoes")}>Gerenciar</button>
+              </div>
+              {pendenciasAprovacao.length === 0 ? (
+                <p className="text-[12px] m-0" style={{ color: "var(--muted)" }}>Nenhuma solicitação aguardando sua decisão.</p>
+              ) : (
+                <div className="space-y-3">
+                  {pendenciasAprovacao.map((c) => {
+                    const etapa = c.aprovacoes.find((a) => a.status === "Pendente");
+                    const sol = nomeDe(c.solicitanteId);
+                    return (
+                      <div key={c.id} className="rounded-lg p-3.5" style={{ background: "rgba(242,183,10,0.07)", border: "1px solid rgba(242,183,10,0.3)" }}>
+                        <div className="flex items-center gap-2 text-[11px] mb-1">
+                          <span className="font-bold tabular-nums">{c.numero}</span>
+                          <Chip tom="ambar" dot={false}>{etapa?.etapaNome}</Chip>
+                          <PrioridadeChip p={c.prioridade} />
+                        </div>
+                        <div className="text-[12.5px] font-bold">{c.titulo}</div>
+                        <div className="text-[10.5px] mt-0.5 mb-2" style={{ color: "var(--muted)" }}>
+                          Solicitante: {sol?.nome} ({unidades.find((u) => u.id === c.unidadeId)?.sigla}) · prazo {fmtData(c.prazoResolucao)}
+                        </div>
+                        <input className="input !py-1.5 !text-[11.5px] mb-2" placeholder="Observação (opcional)…" value={comentarioAprov} onChange={(e) => setComentarioAprov(e.target.value)} />
+                        <div className="flex gap-1.5">
+                          <button className="btn !py-1.5 flex-1 text-[11.5px]" style={{ background: "var(--green)", color: "#fff" }} onClick={() => decidir(c.id, etapa!.etapaId, "Aprovado")}>
+                            <Icon name="check" size={13} /> Aprovar
+                          </button>
+                          <button className="btn btn-outline !py-1.5 flex-1 text-[11.5px]" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={() => decidir(c.id, etapa!.etapaId, "Rejeitado")}>
+                            <Icon name="fechar" size={13} /> Rejeitar
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </Reveal>
+
+          <Reveal delay={80}>
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="ovl">Minhas Demandas</div>
+                <button className="btn btn-ghost !py-1 text-[11.5px]" onClick={() => irPara("demandas")}>Demandas</button>
+              </div>
+              <div className="space-y-2">
+                {minhasDemandas.slice(0, 4).map((d) => (
+                  <div key={d.id} className="flex items-center gap-2.5">
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[12.5px] font-bold truncate">{d.tipo}</span>
+                      <span className="block text-[10.5px] tabular-nums" style={{ color: "var(--muted)" }}>{d.protocolo}</span>
+                    </span>
+                    <StatusChip s={d.status} />
+                  </div>
+                ))}
+                {minhasDemandas.length === 0 && <p className="text-[12px] m-0" style={{ color: "var(--muted)" }}>Nenhuma demanda sob sua responsabilidade.</p>}
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal delay={120}>
+            <div className="card p-5">
+              <div className="ovl mb-3">Meus Projetos — {fmtNum(meusProjetos.length)}</div>
+              <div className="space-y-2.5">
+                {meusProjetos.map((p) => (
+                  <button key={p.id} className="w-full text-left cursor-pointer bg-transparent border-0 p-0 hover:translate-x-0.5 transition-transform" onClick={() => irPara("projetos")}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[12.5px] font-bold truncate">{p.nome}</span>
+                      <span className="text-[11.5px] font-extrabold tabular-nums">{fmtNum(p.progresso)}%</span>
+                    </div>
+                    <div className="rounded-full h-1.5 overflow-hidden" style={{ background: "rgba(19,37,29,0.09)" }}>
+                      <div className="h-full bar-anim rounded-full" style={{ width: `${p.progresso}%`, background: p.saude === "Crítico" ? "var(--red)" : p.saude === "Em atenção" ? "var(--amber)" : "var(--green)" }} />
+                    </div>
+                  </button>
+                ))}
+                {meusProjetos.length === 0 && <p className="text-[12px] m-0" style={{ color: "var(--muted)" }}>Você não gerencia projetos no momento.</p>}
+              </div>
+            </div>
+          </Reveal>
+        </div>
+
+        {/* Coluna 3 */}
+        <div className="space-y-4">
+          <Reveal delay={60}>
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="ovl">Minhas Notificações</div>
+                <button className="btn btn-ghost !py-1 text-[11.5px]" onClick={() => { marcarNotificacoesLidas(); toast("Notificações marcadas como lidas", "verde"); }}>Marcar lidas</button>
+              </div>
+              <div className="space-y-2">
+                {notificacoes.filter((n) => !n.lida).slice(0, 4).map((n) => (
+                  <div key={n.id} className="flex gap-2.5 rounded-lg px-3 py-2.5" style={{ background: "rgba(242,183,10,0.06)" }}>
+                    <span className="mt-1 w-2 h-2 rounded-full flex-none" style={{ background: "var(--accent)" }} />
+                    <div className="min-w-0">
+                      <div className="text-[12.5px] font-bold">{n.titulo}</div>
+                      <div className="text-[11px]" style={{ color: "var(--muted)" }}>{n.detalhe}</div>
+                    </div>
+                  </div>
+                ))}
+                {notificacoes.filter((n) => !n.lida).length === 0 && <p className="text-[12px] m-0" style={{ color: "var(--muted)" }}>Caixa limpa — nada pendente.</p>}
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal delay={90}>
+            <div className="card p-5">
+              <div className="ovl mb-3">Pendências</div>
+              <div className="space-y-2">
+                {tarefas.filter((t) => t.status === "Em Revisão" && t.responsavelId === atual.id).map((t) => (
+                  <div key={t.id} className="flex items-center gap-2 text-[12px]">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--cyan)" }} />
+                    <span className="flex-1 truncate font-semibold">{t.titulo}</span>
+                    <StatusChip s={t.status} />
+                  </div>
+                ))}
+                {minhasDemandas.filter((d) => d.status === "Aguardando").map((d) => (
+                  <div key={d.id} className="flex items-center gap-2 text-[12px]">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--amber)" }} />
+                    <span className="flex-1 truncate font-semibold">{d.tipo}</span>
+                    <StatusChip s={d.status} />
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--red)" }} />
+                  <span className="flex-1 truncate font-semibold">{fmtNum(pendenciasAprovacao.length)} aprovações aguardando decisão</span>
+                  <Chip tom="ambar" dot={false}>Aprovações</Chip>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal delay={120}>
+            <div className="card p-5">
+              <div className="ovl mb-3">Atividades Bloqueadas — {fmtNum(bloqueadas.length)}</div>
+              {bloqueadas.length === 0 ? (
+                <p className="text-[12px] m-0" style={{ color: "var(--muted)" }}>Nenhuma atividade bloqueada no momento.</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {bloqueadas.map((t) => (
+                    <div key={t.id} className="rounded-lg px-3.5 py-3" style={{ background: "var(--red-soft)" }}>
+                      <div className="text-[12.5px] font-bold" style={{ color: "var(--red)" }}>{t.titulo}</div>
+                      <div className="text-[11px] mt-0.5" style={{ color: "var(--muted)" }}>{t.bloqueioMotivo}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Reveal>
+
+          <Reveal delay={150}>
+            <div className="card p-5">
+              <div className="ovl mb-3">Minha Equipe {minhaEquipe ? `— ${minhaEquipe.nome}` : ""}</div>
+              {minhaEquipe ? (
+                <>
+                  <div className="space-y-2 mb-3">
+                    {minhaEquipe.membroIds.map((id) => {
+                      const u = nomeDe(id);
+                      if (!u) return null;
+                      return (
+                        <div key={id} className="flex items-center gap-2.5">
+                          <Avatar nome={u.nome} size={28} />
+                          <span className="flex-1 text-[12.5px] font-bold">{u.nome}</span>
+                          {minhaEquipe.liderId === id && <Chip tom="verde" dot={false}>Líder</Chip>}
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: u.ativo ? "var(--green)" : "var(--grey)" }} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {minhaEquipe.especialidades.map((e) => <Chip key={e} tom="cinza" dot={false}>{e}</Chip>)}
+                  </div>
+                </>
+              ) : <p className="text-[12px] m-0" style={{ color: "var(--muted)" }}>Você não participa de equipes no momento.</p>}
+            </div>
+          </Reveal>
+
+          <Reveal delay={170}>
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="ovl">Meu Calendário — próximos</div>
+                <button className="btn btn-ghost !py-1 text-[11.5px]" onClick={() => irPara("calendario")}>Abrir</button>
+              </div>
+              <div className="space-y-2">
+                {eventos.slice(0, 4).map((e) => (
+                  <div key={e.id} className="flex items-center gap-2.5 text-[12px]">
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-none" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>
+                      <Icon name="calendario" size={15} />
+                    </span>
+                    <span className="flex-1 font-bold truncate">{e.titulo}</span>
+                    <span className="tabular-nums text-[11px]" style={{ color: "var(--muted)" }}>{fmtData(e.data)} {e.hora}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Reveal>
+        </div>
       </div>
     </div>
   );

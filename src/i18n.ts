@@ -7,8 +7,8 @@ export type LocaleCode = "pt-BR";
 
 export const M = {
   sistema: {
-    sigla: "SIGA",
-    nome: "Sistema Integrado de Gestão e Acompanhamento",
+    sigla: "GovFlow",
+    nome: "Plataforma Integrada de Gestão para Órgãos Públicos",
     orgao: "Prefeitura Municipal de Cidade Exemplo",
     orgaoCurto: "Prefeitura de Cidade Exemplo",
     versao: "v2.4.1",
@@ -17,6 +17,10 @@ export const M = {
   nav: {
     painel: "Painel",
     minhaArea: "Minha Área",
+    comunicacao: "Comunicação",
+    centralTI: "Central de Serviços de TI",
+    patrimonio: "Patrimônio de TI",
+    aprovacoes: "Aprovações Pendentes",
     projetos: "Projetos",
     tarefas: "Tarefas",
     demandas: "Demandas",

@@ -1,5 +1,5 @@
 import { ReactNode, createContext, useContext, useEffect, useId, useRef, useState } from "react";
-import { PRIORIDADES, STATUS_DEMANDA, STATUS_PROJETO, STATUS_TAREFA, TOM_CSS, Tom } from "../lib/data";
+import { PRIORIDADES, STATUS_ATIVO, STATUS_CHAMADO, STATUS_DEMANDA, STATUS_PROJETO, STATUS_TAREFA, TOM_CSS, Tom } from "../lib/data";
 import { fmtNum } from "../lib/format";
 
 /* ===================== Ícones (SVG próprios) ===================== */
@@ -47,6 +47,20 @@ const ICONES: Record<string, ReactNode> = {
   banco: (<><ellipse cx="12" cy="6" rx="7.5" ry="2.8" /><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6" /><path d="M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8" /></>),
   menu: (<path d="M4 6.5h16M4 12h16M4 17.5h16" />),
   engrenagem: (<><circle cx="12" cy="12" r="3.2" /><path d="M12 3.5v2.6m0 11.8v2.6M3.5 12h2.6m11.8 0h2.6M6 6l1.9 1.9M16.1 16.1 18 18M18 6l-1.9 1.9M7.9 16.1 6 18" /></>),
+  monitor: (<><rect x="3.5" y="4.5" width="17" height="11.5" rx="1.8" /><path d="M9 20h6M12 16v4" /></>),
+  impressora: (<><path d="M7 8V3.5h10V8" /><rect x="3.5" y="8" width="17" height="8" rx="1.5" /><path d="M7 13h10v7.5H7Z" /></>),
+  rede: (<><circle cx="12" cy="5" r="2.2" /><circle cx="5" cy="19" r="2.2" /><circle cx="19" cy="19" r="2.2" /><path d="M12 7.2V13m0 0-5.4 4M12 13l5.4 4" /></>),
+  wifi: (<><path d="M2.5 9.5a13.5 13.5 0 0 1 19 0" /><path d="M5.5 12.8a9.2 9.2 0 0 1 13 0" /><path d="M8.5 16a5 5 0 0 1 7 0" /><circle cx="12" cy="19" r="1.3" fill="currentColor" /></>),
+  fone: (<><path d="M4.5 12.5a7.5 7.5 0 0 1 15 0" /><rect x="3" y="12.5" width="4" height="6.5" rx="1.5" /><rect x="17" y="12.5" width="4" height="6.5" rx="1.5" /><path d="M19.5 19c0 1.5-2 2.5-4.5 2.5" /></>),
+  chat: (<><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H12l-4.5 4v-4h-2A1.5 1.5 0 0 1 4 14.5Z" /><path d="M8 9h8M8 12h5" /></>),
+  caixa: (<><path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4Z" /><path d="M3.5 7.5 12 11.5l8.5-4M12 11.5v9" /></>),
+  sistema: (<><rect x="3.5" y="4" width="17" height="13" rx="1.8" /><path d="M3.5 8h17M6.5 6h.01M9 6h.01" /><path d="m7.5 12 2 2-2 2M11.5 16h4" /></>),
+  cpu: (<><rect x="7" y="7" width="10" height="10" rx="1.5" /><rect x="10" y="10" width="4" height="4" /><path d="M9 3.5V7m6-3.5V7M9 17v3.5m6-3.5v3.5M3.5 9H7m-3.5 6H7M17 9h3.5M17 15h3.5" /></>),
+  periferico: (<><rect x="3.5" y="7" width="17" height="11" rx="2" /><path d="M7 10.5h2.5m2.5 0h2.5M7 13.5h10M9 16.5h6" /></>),
+  pasta: (<><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4.5L12 7.5h7A1.5 1.5 0 0 1 20.5 9v8.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5Z" /></>),
+  carimbo: (<><circle cx="12" cy="7.5" r="3.5" /><path d="m9.5 10-1.5 6h8l-1.5-6" /><path d="M6 19.5h12" /></>),
+  qr: (<><rect x="4" y="4" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1" /><path d="M13.5 13.5h3v3h-3zM17 17h3v3h-3zM20 13.5v.5M13.5 20h.5" /></>),
+  escudo: (<><path d="M12 3 5 5.8v5.4c0 4.6 3 7.7 7 9.3 4-1.6 7-4.7 7-9.3V5.8Z" /></>),
 };
 
 export function Icon({ name, size = 18, className }: { name: string; size?: number; className?: string }) {
@@ -94,7 +108,7 @@ export function Chip({ tom, children, dot = true }: { tom: Tom; children: ReactN
 }
 
 export function StatusChip({ s }: { s: string }) {
-  const lista = [...STATUS_TAREFA, ...STATUS_DEMANDA, ...STATUS_PROJETO];
+  const lista = [...STATUS_TAREFA, ...STATUS_DEMANDA, ...STATUS_PROJETO, ...STATUS_CHAMADO, ...STATUS_ATIVO];
   const achado = lista.find((x) => x.label === s);
   const tom: Tom = achado ? achado.tom : STATUS_DOC_TOM[s] ?? "cinza";
   return <Chip tom={tom}>{s}</Chip>;
@@ -396,3 +410,90 @@ export function Vazio({ icone = "busca", titulo, dica }: { icone?: string; titul
     </div>
   );
 }
+
+/* ===================== Status de chamado / ativo ===================== */
+
+import { STATUS_ATIVO as _SA, STATUS_CHAMADO as _SC } from "../lib/data";
+
+export function StatusChamadoChip({ s }: { s: string }) {
+  const achado = [..._SC, ..._SA].find((x) => x.label === s);
+  return <Chip tom={achado?.tom ?? "cinza"}>{s}</Chip>;
+}
+
+/* ===================== QR Code (padrão determinístico por ativo) ===================== */
+
+function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+export function QrCode({ valor, size = 148 }: { valor: string; size?: number }) {
+  const n = 21;
+  const cel = size / n;
+  let h = hashStr(valor);
+  const rand = () => { h = (Math.imul(h, 1103515245) + 12345) >>> 0; return h / 4294967296; };
+  const grade: boolean[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => rand() > 0.52));
+  const marcador = (r: number, c: number) => {
+    for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) {
+      const borda = i === 0 || i === 6 || j === 0 || j === 6;
+      const miolo = i >= 2 && i <= 4 && j >= 2 && j <= 4;
+      grade[r + i][c + j] = borda || miolo;
+    }
+    for (let i = -1; i <= 7; i++) {
+      if (r + i >= 0 && r + i < n && c - 1 >= 0) grade[r + i][c - 1] = false;
+      if (r + i >= 0 && r + i < n && c + 7 < n) grade[r + i][c + 7] = false;
+    }
+    for (let j = -1; j <= 7; j++) {
+      if (c + j >= 0 && c + j < n && r - 1 >= 0) grade[r - 1][c + j] = false;
+      if (c + j >= 0 && c + j < n && r + 7 < n) grade[r + 7][c + j] = false;
+    }
+  };
+  marcador(0, 0); marcador(0, n - 7); marcador(n - 7, 0);
+  for (let i = 8; i < n - 8; i++) { grade[6][i] = i % 2 === 0; grade[i][6] = i % 2 === 0; }
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label={`QR Code ${valor}`} role="img" style={{ background: "#fff", borderRadius: 8, border: "1px solid var(--line)" }}>
+      {grade.map((linha, r) =>
+        linha.map((preto, c) => preto ? <rect key={`${r}-${c}`} x={c * cel + 0.4} y={r * cel + 0.4} width={cel - 0.8} height={cel - 0.8} fill="#13251d" /> : null)
+      )}
+    </svg>
+  );
+}
+
+/* ===================== Rastreador de etapas de aprovação ===================== */
+
+export interface EtapaRastreio { nome: string; status: "Pendente" | "Aprovado" | "Rejeitado" | "Ajuste solicitado"; aprovadorNome: string; data?: string; comentario?: string; }
+
+export function RastreadorEtapas({ etapas }: { etapas: EtapaRastreio[] }) {
+  if (etapas.length === 0) return null;
+  const cor = (s: EtapaRastreio["status"]) =>
+    s === "Aprovado" ? "var(--green)" : s === "Rejeitado" ? "var(--red)" : s === "Ajuste solicitado" ? "var(--amber)" : "var(--line-2)";
+  return (
+    <ol className="m-0 p-0 list-none">
+      {etapas.map((e, i) => (
+        <li key={i} className="flex gap-3 pb-4 last:pb-0">
+          <div className="flex flex-col items-center">
+            <span
+              className="w-6 h-6 rounded-full flex items-center justify-center flex-none"
+              style={e.status === "Pendente"
+                ? { border: "2px solid var(--line-2)", background: "#fff", color: "transparent" }
+                : { background: cor(e.status), color: "#fff" }}
+            >
+              <Icon name={e.status === "Aprovado" ? "check" : e.status === "Rejeitado" ? "fechar" : e.status === "Ajuste solicitado" ? "editar" : "check"} size={12} />
+            </span>
+            {i < etapas.length - 1 && <span className="flex-1 w-[2px] mt-1 rounded" style={{ background: etapas[i + 1].status !== "Pendente" || e.status === "Aprovado" ? "var(--line-2)" : "var(--line)" }} />}
+          </div>
+          <div className="min-w-0 pt-0.5">
+            <div className="text-[12.5px] font-bold leading-tight">{e.nome}</div>
+            <div className="text-[11px] mt-0.5" style={{ color: "var(--muted)" }}>
+              {e.status === "Pendente" ? `Aguardando — ${e.aprovadorNome}` : `${e.status} por ${e.aprovadorNome}${e.data ? ` · ${e.data}` : ""}`}
+            </div>
+            {e.comentario && <div className="text-[11.5px] mt-1 italic px-2.5 py-1.5 rounded-md" style={{ background: "rgba(19,37,29,0.045)", color: "var(--muted)" }}>“{e.comentario}”</div>}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+

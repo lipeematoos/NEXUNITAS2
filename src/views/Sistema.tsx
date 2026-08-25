@@ -1,21 +1,28 @@
 import { useMemo, useState } from "react";
 import { Avatar, Campo, Chip, Confirmacao, Icon, Modal, Reveal, Seletor, Chave, useToast } from "../components/ui";
 import { CabecalhoPagina } from "../components/shell";
-import { ACOES_PERMISSAO, MODULOS_PERMISSAO, Usuario } from "../lib/data";
+import { ACOES_PERMISSAO, MODULOS_PERMISSAO, PERFIS_RBAC, Usuario } from "../lib/data";
 import { fmtDataHora, fmtNum } from "../lib/format";
 import { useApp } from "../lib/store";
+
+const TIPOS_UNIDADE = ["Secretaria", "Departamento", "Diretoria", "Divisão", "Coordenadoria", "Setor", "Núcleo", "Unidade", "Outro"];
 
 /* ===================== Administração ===================== */
 
 export function Administracao() {
-  const { usuarios, unidades, perfis, setPerfis, auditoria, toggleUsuario } = useApp();
+  const { usuarios, unidades, perfis, setPerfis, auditoria, toggleUsuario, criarUnidade, removerUnidade } = useApp();
   const toast = useToast();
-  const [aba, setAba] = useState<"usuarios" | "perfis" | "auditoria">("usuarios");
+  const [aba, setAba] = useState<"usuarios" | "perfis" | "unidades" | "cargos" | "auditoria">("usuarios");
   const [busca, setBusca] = useState("");
   const [confirmaSuspensao, setConfirmaSuspensao] = useState<Usuario | null>(null);
+  const [confirmaExclusao, setConfirmaExclusao] = useState<string | null>(null);
   const [modalNovo, setModalNovo] = useState(false);
-  const [novo, setNovo] = useState({ nome: "", matricula: "", usuario: "", cargo: "", unidadeId: "un11", perfil: "Visualizador" });
+  const [modalUnidade, setModalUnidade] = useState(false);
+  const [novo, setNovo] = useState({ nome: "", matricula: "", usuario: "", cargo: "", unidadeId: "un11", perfil: "Servidor" });
+  const [novaUnidade, setNovaUnidade] = useState({ nome: "", sigla: "", tipo: "Setor", parentId: "un0", responsavelId: "", ramal: "" });
   const [filtroAcao, setFiltroAcao] = useState("Todas");
+  const [novoTipo, setNovoTipo] = useState("");
+  const [tipos, setTipos] = useState<string[]>(TIPOS_UNIDADE);
 
   const filtrados = usuarios.filter((u) => busca.trim() === "" || `${u.nome} ${u.matricula} ${u.cargo}`.toLowerCase().includes(busca.toLowerCase()));
   const acoes = ["Todas", ...Array.from(new Set(auditoria.map((a) => a.acao)))];
@@ -30,11 +37,23 @@ export function Administracao() {
     toast("Permissão atualizada", "verde", `${perfilNome} · ${modulo}`);
   };
 
+  const filhosDe = (id: string) => unidades.filter((u) => u.parentId === id);
+
+  const salvarUnidade = () => {
+    if (!novaUnidade.nome.trim() || !novaUnidade.sigla.trim()) { toast("Preencha nome e sigla", "vermelho"); return; }
+    criarUnidade({ nome: novaUnidade.nome.trim(), sigla: novaUnidade.sigla.trim(), tipo: novaUnidade.tipo as "Setor", parentId: novaUnidade.parentId, responsavelId: novaUnidade.responsavelId || undefined, ramal: novaUnidade.ramal || undefined });
+    toast("Unidade administrativa criada", "verde", `${novaUnidade.tipo}: ${novaUnidade.nome}`);
+    setModalUnidade(false);
+    setNovaUnidade({ nome: "", sigla: "", tipo: "Setor", parentId: "un0", responsavelId: "", ramal: "" });
+  };
+
+  const cargosDistintos = useMemo(() => Array.from(new Set(usuarios.map((u) => u.cargo))), [usuarios]);
+
   return (
     <div>
-      <CabecalhoPagina titulo="Administração" subtitulo="Gestão de servidores, perfis de acesso e trilha de auditoria do sistema" />
-      <div className="flex gap-1 mb-5" style={{ borderBottom: "1px solid var(--line)" }}>
-        {([["usuarios", "Usuários", "usuario"], ["perfis", "Perfis de Acesso", "administracao"], ["auditoria", "Registro de Auditoria", "relogio"]] as const).map(([k, r, ic]) => (
+      <CabecalhoPagina titulo="Administração" subtitulo="Gestão de servidores, estrutura administrativa, perfis de acesso e trilha de auditoria" />
+      <div className="flex gap-1 mb-5 overflow-x-auto" style={{ borderBottom: "1px solid var(--line)" }}>
+        {([["usuarios", "Usuários", "usuario"], ["perfis", "Perfis de Acesso", "administracao"], ["unidades", "Unidades Administrativas", "organograma"], ["cargos", "Cargos e Funções", "area"], ["auditoria", "Registro de Auditoria", "relogio"]] as const).map(([k, r, ic]) => (
           <button key={k} className={`tab-btn ${aba === k ? "on" : ""}`} onClick={() => setAba(k)}>
             <span className="inline-flex items-center gap-1.5"><Icon name={ic} size={14} /> {r}</span>
           </button>
@@ -62,7 +81,7 @@ export function Administracao() {
                           <Avatar nome={u.nome} size={30} />
                           <div>
                             <div className="font-bold text-[12.5px] whitespace-nowrap">{u.nome}</div>
-                            <div className="text-[10.5px]" style={{ color: "var(--muted)" }}>{u.email}</div>
+                            <div className="text-[10.5px]" style={{ color: "var(--muted)" }}>{u.email || "sem e-mail (opcional)"}</div>
                           </div>
                         </div>
                       </td>
@@ -94,6 +113,20 @@ export function Administracao() {
 
       {aba === "perfis" && (
         <Reveal>
+          <div className="card p-5 mb-4">
+            <div className="ovl mb-3">Perfis padrão da plataforma (RBAC)</div>
+            <div className="flex flex-wrap gap-2">
+              {Object.keys(PERFIS_RBAC).map((p) => (
+                <span key={p} className="chip" style={{ background: PERFIS_RBAC[p].includes("*") ? "var(--red-soft)" : "var(--green-soft)", color: PERFIS_RBAC[p].includes("*") ? "var(--red)" : "var(--green)" }}>
+                  <Icon name="escudo" size={11} /> {p}
+                </span>
+              ))}
+            </div>
+            <p className="text-[11.5px] mt-3 mb-0" style={{ color: "var(--muted)" }}>
+              As permissões são aplicadas em cada módulo e no menu lateral. Use o seletor de perfil no canto superior direito para simular o acesso de cada papel.
+              Perfis personalizados podem ser criados pelo Super Administrador.
+            </p>
+          </div>
           <div className="space-y-4">
             {perfis.map((p) => (
               <div key={p.nome} className="card overflow-hidden">
@@ -135,13 +168,75 @@ export function Administracao() {
         </Reveal>
       )}
 
+      {aba === "unidades" && (
+        <Reveal>
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <span className="text-[12.5px] font-semibold" style={{ color: "var(--muted)" }}>
+              {fmtNum(unidades.length)} unidades · hierarquia ilimitada · tipos personalizados
+            </span>
+            <button className="btn btn-accent ml-auto" onClick={() => setModalUnidade(true)}><Icon name="mais" size={16} /> Nova Unidade</button>
+          </div>
+          <div className="grid lg:grid-cols-[1fr_300px] gap-4 items-start">
+            <div className="card p-5">
+              {unidades.filter((u) => u.parentId === null).map((raiz) => (
+                <NoUnidade key={raiz.id} unidade={raiz} unidades={unidades} usuarios={usuarios} nivel={0}
+                  onRemover={(id) => setConfirmaExclusao(id)} />
+              ))}
+            </div>
+            <div className="card p-5">
+              <div className="ovl mb-3">Tipos de unidade</div>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {tipos.map((t) => <Chip key={t} tom="cinza" dot={false}>{t}</Chip>)}
+              </div>
+              <div className="flex gap-2">
+                <input className="input !py-1.5 text-[12px]" placeholder="Novo tipo personalizado…" value={novoTipo} onChange={(e) => setNovoTipo(e.target.value)} />
+                <button className="btn btn-outline !py-1.5 flex-none" onClick={() => {
+                  if (!novoTipo.trim()) return;
+                  if (tipos.includes(novoTipo.trim())) { toast("Tipo já existe", "ambar"); return; }
+                  setTipos([...tipos, novoTipo.trim()]);
+                  toast("Tipo de unidade criado", "verde", novoTipo.trim());
+                  setNovoTipo("");
+                }}><Icon name="mais" size={14} /></button>
+              </div>
+              <p className="text-[11px] mt-3 mb-0 leading-relaxed" style={{ color: "var(--muted)" }}>
+                A estrutura é totalmente dinâmica: crie secretarias, diretorias, coordenadorias ou qualquer tipo necessário — sem alterações de código.
+              </p>
+            </div>
+          </div>
+        </Reveal>
+      )}
+
+      {aba === "cargos" && (
+        <Reveal>
+          <div className="card p-5">
+            <div className="ovl mb-4">Cargos e funções em uso — {fmtNum(cargosDistintos.length)}</div>
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {cargosDistintos.map((c) => (
+                <div key={c} className="rounded-lg px-4 py-3 flex items-center gap-3" style={{ background: "rgba(19,37,29,0.04)" }}>
+                  <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-none" style={{ background: "var(--deep)", color: "#f2b70a" }}>
+                    <Icon name="area" size={15} />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12.5px] font-bold truncate">{c}</div>
+                    <div className="text-[10.5px]" style={{ color: "var(--muted)" }}>{fmtNum(usuarios.filter((u) => u.cargo === c).length)} servidores</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11.5px] mt-4 mb-0" style={{ color: "var(--muted)" }}>
+              Cargos e funções são cadastrados junto com cada servidor. A tabela de cargos do órgão pode ser importada do sistema de RH (integração futura).
+            </p>
+          </div>
+        </Reveal>
+      )}
+
       {aba === "auditoria" && (
         <Reveal>
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <select className="select !w-[260px]" value={filtroAcao} onChange={(e) => setFiltroAcao(e.target.value)} aria-label="Filtrar por ação">
               {acoes.map((a) => <option key={a}>{a}</option>)}
             </select>
-            <span className="text-[12px] font-semibold" style={{ color: "var(--muted)" }}>{fmtNum(audFiltrada.length)} registros no período</span>
+            <span className="text-[12px] font-semibold" style={{ color: "var(--muted)" }}>{fmtNum(audFiltrada.length)} registros</span>
             <button className="btn btn-outline ml-auto !py-1.5 text-[12px]" onClick={() => toast("Exportação iniciada", "azul", "registro_auditoria.csv")}>
               <Icon name="baixar" size={14} /> Exportar CSV
             </button>
@@ -149,7 +244,7 @@ export function Administracao() {
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="tbl min-w-[760px]">
-                <thead><tr><th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Objeto</th><th>Detalhe</th><th>Endereço IP</th></tr></thead>
+                <thead><tr><th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Objeto</th><th>Detalhe</th><th>IP</th></tr></thead>
                 <tbody>
                   {audFiltrada.map((a) => (
                     <tr key={a.id}>
@@ -159,7 +254,7 @@ export function Administracao() {
                           {a.usuario !== "sistema" && <Avatar nome={a.usuario} size={22} />}{a.usuario}
                         </span>
                       </td>
-                      <td><Chip tom={a.acao.includes("recusada") || a.acao.includes("Tentativa") ? "vermelho" : a.acao.includes("Criação") || a.acao.includes("Abertura") ? "verde" : "azul"} dot={false}>{a.acao}</Chip></td>
+                      <td><Chip tom={a.acao.includes("Rejei") || a.acao.includes("Tentativa") ? "vermelho" : a.acao.includes("Criação") || a.acao.includes("Abertura") || a.acao.includes("Aprovação") ? "verde" : "azul"} dot={false}>{a.acao}</Chip></td>
                       <td className="font-bold text-[12px]">{a.objeto}</td>
                       <td className="text-[12px] max-w-[240px] truncate" style={{ color: "var(--muted)" }}>{a.detalhe}</td>
                       <td className="tabular-nums text-[11.5px]" style={{ color: "var(--muted)" }}>{a.ip}</td>
@@ -169,13 +264,16 @@ export function Administracao() {
               </table>
             </div>
           </div>
+          <p className="text-[11px] mt-3" style={{ color: "var(--muted)" }}>
+            Eventos críticos — login, criação de usuários, alterações de permissão, aprovações, movimentações patrimoniais e mudanças de fluxo — são registrados automaticamente. Registros não são editáveis.
+          </p>
         </Reveal>
       )}
 
       <Confirmacao
         aberto={!!confirmaSuspensao}
         titulo="Suspender conta de usuário"
-        mensagem={`A conta de ${confirmaSuspensao?.nome} (${confirmaSuspensao?.matricula}) será suspensa e o acesso ao SIGA bloqueado imediatamente. A ação ficará registrada na auditoria. Deseja continuar?`}
+        mensagem={`A conta de ${confirmaSuspensao?.nome} (${confirmaSuspensao?.matricula}) será suspensa e o acesso bloqueado imediatamente. A ação ficará registrada na auditoria. Deseja continuar?`}
         perigoso
         onCancelar={() => setConfirmaSuspensao(null)}
         onConfirmar={() => {
@@ -183,12 +281,23 @@ export function Administracao() {
           setConfirmaSuspensao(null);
         }}
       />
+      <Confirmacao
+        aberto={!!confirmaExclusao}
+        titulo="Excluir unidade administrativa"
+        mensagem={`A unidade “${unidadeDe(confirmaExclusao ?? "")?.nome ?? ""}” e todas as subordinadas serão removidas da estrutura. Servidores vinculados precisarão de nova lotação. Deseja continuar?`}
+        perigoso
+        onCancelar={() => setConfirmaExclusao(null)}
+        onConfirmar={() => {
+          if (confirmaExclusao) { removerUnidade(confirmaExclusao); toast("Unidade excluída", "ambar"); }
+          setConfirmaExclusao(null);
+        }}
+      />
 
       <Modal aberto={modalNovo} onFechar={() => setModalNovo(false)} titulo="Novo Usuário" largo
         rodape={<><button className="btn btn-outline" onClick={() => setModalNovo(false)}>Cancelar</button><button className="btn btn-primary" onClick={() => {
           if (!novo.nome.trim() || !novo.matricula.trim()) { toast("Preencha nome e matrícula", "vermelho"); return; }
-          toast("Usuário criado", "verde", `${novo.nome} — convite de ativação enviado por e-mail`);
-          setModalNovo(false); setNovo({ nome: "", matricula: "", usuario: "", cargo: "", unidadeId: "un11", perfil: "Visualizador" });
+          toast("Usuário criado", "verde", `${novo.nome} — senha provisória definida pelo administrador`);
+          setModalNovo(false); setNovo({ nome: "", matricula: "", usuario: "", cargo: "", unidadeId: "un11", perfil: "Servidor" });
         }}><Icon name="check" size={15} /> Criar usuário</button></>}
       >
         <div className="space-y-4">
@@ -202,13 +311,62 @@ export function Administracao() {
             <Seletor rotulo="Lotação (Unidade Administrativa)" valor={novo.unidadeId} onChange={(v) => setNovo({ ...novo, unidadeId: v })}
               opcoes={unidades.filter((u) => u.id !== "un0").map((u) => ({ valor: u.id, rotulo: `${u.sigla} — ${u.nome}` }))} />
             <Seletor rotulo="Perfil de Acesso" valor={novo.perfil} onChange={(v) => setNovo({ ...novo, perfil: v })}
-              opcoes={perfis.map((p) => p.nome)} />
+              opcoes={["Administrador", "Gerente de Projeto", "Responsável pela Equipe", "Responsável pela Unidade", "Visualizador"]} />
           </div>
           <p className="text-[11.5px] m-0 flex gap-1.5 items-start" style={{ color: "var(--muted)" }}>
-            <Icon name="info" size={13} className="mt-0.5 flex-none" /> O CPF não é solicitado para autenticação — o acesso utiliza usuário ou matrícula + senha, conforme a política de segurança.
+            <Icon name="info" size={13} className="mt-0.5 flex-none" /> CPF e e-mail são opcionais. A autenticação utiliza usuário ou matrícula + senha; a primeira troca de senha é obrigatória.
           </p>
         </div>
       </Modal>
+
+      <Modal aberto={modalUnidade} onFechar={() => setModalUnidade(false)} titulo="Nova Unidade Administrativa"
+        rodape={<><button className="btn btn-outline" onClick={() => setModalUnidade(false)}>Cancelar</button><button className="btn btn-primary" onClick={salvarUnidade}><Icon name="check" size={15} /> Criar unidade</button></>}>
+        <div className="space-y-4">
+          <Campo rotulo="Nome" obrigatorio><input className="input" value={novaUnidade.nome} onChange={(e) => setNovaUnidade({ ...novaUnidade, nome: e.target.value })} placeholder="ex.: Coordenadoria de Compras" /></Campo>
+          <div className="grid grid-cols-2 gap-4">
+            <Campo rotulo="Sigla / Código" obrigatorio><input className="input" value={novaUnidade.sigla} onChange={(e) => setNovaUnidade({ ...novaUnidade, sigla: e.target.value })} placeholder="ex.: CCOMP" /></Campo>
+            <Seletor rotulo="Tipo" valor={novaUnidade.tipo} onChange={(v) => setNovaUnidade({ ...novaUnidade, tipo: v })} opcoes={tipos} />
+          </div>
+          <Seletor rotulo="Unidade superior (vínculo hierárquico)" valor={novaUnidade.parentId} onChange={(v) => setNovaUnidade({ ...novaUnidade, parentId: v })}
+            opcoes={unidades.map((u) => ({ valor: u.id, rotulo: `${u.sigla} — ${u.nome}` }))} />
+          <div className="grid grid-cols-2 gap-4">
+            <Seletor rotulo="Responsável" valor={novaUnidade.responsavelId} onChange={(v) => setNovaUnidade({ ...novaUnidade, responsavelId: v })}
+              opcoes={[{ valor: "", rotulo: "Definir depois" }, ...usuarios.filter((u) => u.ativo).map((u) => ({ valor: u.id, rotulo: u.nome }))]} />
+            <Campo rotulo="Ramal"><input className="input" value={novaUnidade.ramal} onChange={(e) => setNovaUnidade({ ...novaUnidade, ramal: e.target.value })} placeholder="ex.: 6150" /></Campo>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function NoUnidade({ unidade, unidades, usuarios, nivel, onRemover }: {
+  unidade: { id: string; nome: string; sigla: string; tipo: string; parentId: string | null; responsavelId?: string; ramal?: string };
+  unidades: { id: string; nome: string; sigla: string; tipo: string; parentId: string | null; responsavelId?: string; ramal?: string }[];
+  usuarios: { id: string; nome: string }[];
+  nivel: number;
+  onRemover: (id: string) => void;
+}) {
+  const [aberto, setAberto] = useState(nivel < 2);
+  const filhos = unidades.filter((u) => u.parentId === unidade.id);
+  const resp = usuarios.find((u) => u.id === unidade.responsavelId);
+  return (
+    <div style={{ marginLeft: nivel > 0 ? 22 : 0, borderLeft: nivel > 0 ? "1.5px solid var(--line-2)" : undefined, paddingLeft: nivel > 0 ? 14 : 0 }}>
+      <div className="flex items-center gap-2.5 py-1.5 group">
+        <button className="icon-btn !w-6 !h-6" style={{ opacity: filhos.length ? 1 : 0.25 }} onClick={() => setAberto(!aberto)} aria-label={aberto ? "Recolher" : "Expandir"}>
+          <Icon name={aberto ? "chevron-b" : "chevron-d"} size={13} />
+        </button>
+        <span className="chip" style={{ background: nivel === 0 ? "var(--deep)" : "var(--green-soft)", color: nivel === 0 ? "#f2b70a" : "var(--green)" }}>{unidade.tipo}</span>
+        <span className="text-[13px] font-bold">{unidade.sigla}</span>
+        <span className="text-[12.5px] flex-1 truncate" style={{ color: "var(--muted)" }}>{unidade.nome}</span>
+        {resp && <span className="text-[11px] font-semibold hidden md:inline" style={{ color: "var(--muted)" }}>Resp.: {resp.nome.split(" ")[0]}</span>}
+        <button className="icon-btn !w-7 !h-7 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--red)" }} onClick={() => onRemover(unidade.id)} aria-label="Excluir unidade" disabled={nivel === 0}>
+          <Icon name="excluir" size={14} />
+        </button>
+      </div>
+      {aberto && filhos.map((f) => (
+        <NoUnidade key={f.id} unidade={f} unidades={unidades} usuarios={usuarios} nivel={nivel + 1} onRemover={onRemover} />
+      ))}
     </div>
   );
 }
@@ -226,11 +384,46 @@ export function Configuracoes({ onRefazerInstalacao }: { onRefazerInstalacao: ()
     <div>
       <CabecalhoPagina
         titulo="Configurações"
-        subtitulo="Parâmetros do sistema, regionalização e políticas de segurança"
+        subtitulo="Identidade, parâmetros do sistema, regionalização e políticas de segurança"
         acoes={<button className="btn btn-primary" onClick={salvar}><Icon name="check" size={15} /> Salvar alterações</button>}
       />
       <div className="grid lg:grid-cols-2 gap-4 items-start">
         <Reveal>
+          <div className="card p-5">
+            <div className="ovl mb-4">Identidade do Sistema</div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Campo rotulo="Nome do produto"><input className="input" value={form.marca.produto} onChange={(e) => setForm({ ...form, marca: { ...form.marca, produto: e.target.value } })} /></Campo>
+                <Campo rotulo="Subtítulo"><input className="input" value={form.marca.subtitulo} onChange={(e) => setForm({ ...form, marca: { ...form.marca, subtitulo: e.target.value } })} /></Campo>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Campo rotulo="Cor institucional (primária)">
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={form.marca.corPrimaria} onChange={(e) => setForm({ ...form, marca: { ...form.marca, corPrimaria: e.target.value } })} className="w-10 h-9 rounded-lg cursor-pointer" style={{ border: "1px solid var(--line-2)", background: "#fff" }} aria-label="Cor primária" />
+                    <input className="input" value={form.marca.corPrimaria} onChange={(e) => setForm({ ...form, marca: { ...form.marca, corPrimaria: e.target.value } })} />
+                  </div>
+                </Campo>
+                <Campo rotulo="Cor de destaque (acento)">
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={form.marca.corAcento} onChange={(e) => setForm({ ...form, marca: { ...form.marca, corAcento: e.target.value } })} className="w-10 h-9 rounded-lg cursor-pointer" style={{ border: "1px solid var(--line-2)", background: "#fff" }} aria-label="Cor de acento" />
+                    <input className="input" value={form.marca.corAcento} onChange={(e) => setForm({ ...form, marca: { ...form.marca, corAcento: e.target.value } })} />
+                  </div>
+                </Campo>
+              </div>
+              <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--line)" }}>
+                <div className="h-2" style={{ background: `repeating-linear-gradient(-45deg, ${form.marca.corAcento} 0 10px, ${form.marca.corPrimaria} 10px 20px)` }} />
+                <div className="flex items-center gap-3 px-4 py-3.5" style={{ background: form.marca.corPrimaria }}>
+                  <span className="font-display font-extrabold text-[18px]" style={{ color: "#f4f7f2" }}>{form.marca.produto}</span>
+                  <span className="text-[10.5px]" style={{ color: "rgba(244,247,242,0.6)" }}>{form.marca.subtitulo}</span>
+                  <span className="ml-auto text-[10px] font-bold px-2 py-1 rounded" style={{ background: form.marca.corAcento, color: "#3b2e00" }}>PRÉ-VISUALIZAÇÃO</span>
+                </div>
+              </div>
+              <p className="text-[11px] m-0" style={{ color: "var(--muted)" }}>O nome, o brasão e as cores aplicam-se à barra lateral, ao login e ao assistente de instalação — sem alterar o código.</p>
+            </div>
+          </div>
+        </Reveal>
+
+        <Reveal delay={60}>
           <div className="card p-5">
             <div className="ovl mb-4">Dados do Órgão</div>
             <div className="space-y-4">
@@ -244,9 +437,9 @@ export function Configuracoes({ onRefazerInstalacao }: { onRefazerInstalacao: ()
           </div>
         </Reveal>
 
-        <Reveal delay={60}>
+        <Reveal delay={40}>
           <div className="card p-5">
-            <div className="ovl mb-4">Regionalização</div>
+            <div className="ovl mb-4">Regionalização e Central de Serviços</div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <Seletor rotulo="Idioma do sistema" valor={form.regional.idioma} onChange={(v) => setForm({ ...form, regional: { ...form.regional, idioma: v } })}
@@ -259,50 +452,55 @@ export function Configuracoes({ onRefazerInstalacao }: { onRefazerInstalacao: ()
                   opcoes={[{ valor: "BRL", rotulo: "R$ — Real brasileiro" }, { valor: "USD", rotulo: "US$ — Dólar americano" }, { valor: "EUR", rotulo: "€ — Euro" }]} />
                 <Campo rotulo="Formato de data"><input className="input" value={form.regional.formatoData} disabled /></Campo>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Campo rotulo="Prefixo dos chamados de TI"><input className="input" value={form.centralTI.prefixo} onChange={(e) => setForm({ ...form, centralTI: { ...form.centralTI, prefixo: e.target.value } })} /></Campo>
+                <Campo rotulo="Expediente (horário de serviço)"><input className="input" value={form.centralTI.expediente} onChange={(e) => setForm({ ...form, centralTI: { ...form.centralTI, expediente: e.target.value } })} /></Campo>
+              </div>
               <div className="rounded-lg px-4 py-3 text-[12px] leading-relaxed" style={{ background: "var(--green-soft)", color: "var(--green)" }}>
-                <strong>pt-BR ativo:</strong> números 1.250,50 · datas DD/MM/YYYY · moeda configurável para outros padrões no futuro.
+                <strong>pt-BR ativo:</strong> números 1.250,50 · datas DD/MM/YYYY · moeda configurável · numeração {form.centralTI.prefixo}-000001.
               </div>
             </div>
           </div>
         </Reveal>
 
-        <Reveal delay={40}>
+        <Reveal delay={80}>
           <div className="card p-5">
             <div className="ovl mb-2">Notificações</div>
             <Chave ligado={form.notificacoes.tarefasAtribuidas} onChange={(v) => setForm({ ...form, notificacoes: { ...form.notificacoes, tarefasAtribuidas: v } })} rotulo="Tarefa atribuída" desc="Notificar quando uma tarefa for atribuída a você." />
             <Chave ligado={form.notificacoes.prazosVencendo} onChange={(v) => setForm({ ...form, notificacoes: { ...form.notificacoes, prazosVencendo: v } })} rotulo="Prazos vencendo" desc="Alertas 48 h e 24 h antes do vencimento." />
-            <Chave ligado={form.notificacoes.aprovacoes} onChange={(v) => setForm({ ...form, notificacoes: { ...form.notificacoes, aprovacoes: v } })} rotulo="Aprovações pendentes" desc="Documentos e demandas aguardando seu parecer." />
-            <Chave ligado={form.notificacoes.demandasNovas} onChange={(v) => setForm({ ...form, notificacoes: { ...form.notificacoes, demandasNovas: v } })} rotulo="Novas demandas" desc="Solicitações recebidas pela central de atendimento." />
+            <Chave ligado={form.notificacoes.aprovacoes} onChange={(v) => setForm({ ...form, notificacoes: { ...form.notificacoes, aprovacoes: v } })} rotulo="Aprovações pendentes" desc="Solicitações aguardando seu parecer no circuito configurado." />
+            <Chave ligado={form.notificacoes.demandasNovas} onChange={(v) => setForm({ ...form, notificacoes: { ...form.notificacoes, demandasNovas: v } })} rotulo="Novas demandas e chamados" desc="Solicitações recebidas pelas centrais de atendimento." />
             <Chave ligado={form.notificacoes.resumoDiario} onChange={(v) => setForm({ ...form, notificacoes: { ...form.notificacoes, resumoDiario: v } })} rotulo="Resumo diário por e-mail" desc="Consolidado das pendências às 7h30." />
           </div>
         </Reveal>
 
-        <Reveal delay={80}>
+        <Reveal delay={60}>
           <div className="card p-5">
             <div className="ovl mb-2">Segurança</div>
             <Chave ligado={form.seguranca.mfa} onChange={(v) => setForm({ ...form, seguranca: { ...form.seguranca, mfa: v } })} rotulo="Verificação em duas etapas (MFA)" desc="Obrigatória para perfis de gestão e administração." />
-            <Chave ligado={form.seguranca.senhaForte} onChange={(v) => setForm({ ...form, seguranca: { ...form.seguranca, senhaForte: v } })} rotulo="Política de senha forte" desc="Mínimo de 8 caracteres com complexidade." />
+            <Chave ligado={form.seguranca.senhaForte} onChange={(v) => setForm({ ...form, seguranca: { ...form.seguranca, senhaForte: v } })} rotulo="Política de senha forte (hash)" desc="Armazenamento com hash resistente; mínimo de 8 caracteres." />
             <Chave ligado={form.seguranca.bloqueioTentativas} onChange={(v) => setForm({ ...form, seguranca: { ...form.seguranca, bloqueioTentativas: v } })} rotulo="Bloqueio por tentativas" desc="Bloqueio de 30 min após 5 falhas de login." />
             <Chave ligado={form.seguranca.sessaoLimite} onChange={(v) => setForm({ ...form, seguranca: { ...form.seguranca, sessaoLimite: v } })} rotulo="Expiração de sessão" desc="Sessão encerrada após 30 min de inatividade." />
+            <p className="text-[11px] mt-2 mb-0" style={{ color: "var(--muted)" }}>LDAP, Active Directory, Microsoft Entra ID e SSO estão previstos como integrações opcionais.</p>
           </div>
         </Reveal>
 
-        <Reveal delay={60} className="lg:col-span-2">
+        <Reveal delay={90}>
           <div className="card p-5">
             <div className="ovl mb-4">Dados e Manutenção</div>
             <div className="grid sm:grid-cols-3 gap-3">
-              <button className="btn btn-outline justify-start !py-3" onClick={() => toast("Backup gerado", "verde", "backup_siga_2026-10-14.sql (42,1 MB)")}>
-                <Icon name="baixar" size={16} /> Exportar backup dos dados
+              <button className="btn btn-outline justify-start !py-3" onClick={() => toast("Backup gerado", "verde", "backup_govflow_2026-10-14.sql (42,1 MB)")}>
+                <Icon name="baixar" size={16} /> Exportar backup
               </button>
               <button className="btn btn-outline justify-start !py-3" onClick={() => toast("Dados de demonstração restaurados", "verde", "As cargas iniciais foram recarregadas.")}>
-                <Icon name="banco" size={16} /> Restaurar dados de demonstração
+                <Icon name="banco" size={16} /> Restaurar demonstração
               </button>
               <button className="btn btn-outline justify-start !py-3" style={{ color: "var(--red)", borderColor: "var(--red)" }} onClick={onRefazerInstalacao}>
-                <Icon name="engrenagem" size={16} /> Refazer Assistente de Instalação
+                <Icon name="engrenagem" size={16} /> Assistente de Instalação
               </button>
             </div>
             <p className="text-[11.5px] mt-3 mb-0" style={{ color: "var(--muted)" }}>
-              O assistente permite reconfigurar dados do órgão, administrador, banco de dados, regionalização, autenticação e estrutura administrativa inicial.
+              O sistema opera integralmente em intranet: banco PostgreSQL local e, opcionalmente, Redis para sessões. Nenhum serviço externo é necessário.
             </p>
           </div>
         </Reveal>
