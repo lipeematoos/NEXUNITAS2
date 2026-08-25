@@ -71,6 +71,8 @@ export interface Usuario {
   unidadeId: string; email: string; ramal: string;
   perfil: "Administrador" | "Gerente de Projeto" | "Responsável pela Equipe" | "Responsável pela Unidade" | "Visualizador";
   ativo: boolean;
+  trocarSenha?: boolean;
+  ultimaTrocaSenha?: string;
 }
 export interface Unidade {
   id: string; nome: string; sigla: string;
@@ -79,8 +81,15 @@ export interface Unidade {
   gestoraId?: string; fundoId?: string; endereco?: string; telefone?: string;
   temEquipePropria?: boolean; dominioId?: string; grupoPrincipalId?: string;
   aplicarAtendimentoSubordinadas?: boolean; slaPadrao?: string; grupoEscalonamentoId?: string;
+  ativa?: boolean;
 }
-export interface Equipe { id: string; nome: string; unidadeId: string; liderId: string; membroIds: string[]; especialidades: string[]; }
+export interface Equipe {
+  id: string; nome: string; unidadeId: string; liderId: string; membroIds: string[]; especialidades: string[];
+  sigla?: string; descricao?: string; tipo?: string; liderSubstitutoId?: string;
+  papeis?: Record<string, string>; ativa?: boolean;
+}
+export const TIPOS_EQUIPE = ["Administrativa", "Projeto", "TI", "Suporte", "Infraestrutura", "Sistemas", "Comissão", "Temporária", "Outro"];
+export const PAPEIS_EQUIPE = ["Responsável", "Coordenador", "Técnico", "Analista", "Membro", "Apoio"];
 export interface Projeto {
   id: string; codigo: string; nome: string; descricao: string; unidadeId: string;
   responsavelId: string; equipeId: string; status: string; prioridade: string;
@@ -106,7 +115,7 @@ export interface Documento {
   atualizadoEm: string; responsavelId: string; tamanho: string;
 }
 export interface Risco {
-  id: string; titulo: string; descricao: string; categoria: "Tecnológico" | "Operacional" | "Financeiro" | "Conformidade";
+  id: string; titulo: string; descricao: string; categoria: "Tecnológico" | "Operacional" | "Financeiro" | "Conformidade" | "Segurança";
   probabilidade: number; impacto: number; tendencia: "Subindo" | "Estável" | "Diminuindo";
   nivel: "Crítico" | "Monitorando" | "Mitigado"; mitigacao: string; responsavelId: string; projetoId: string | null;
 }
@@ -374,15 +383,39 @@ export const PERMISSOES: Permissao[] = [
 export const PERFIS_RBAC: Record<string, string[]> = {
   "Super Administrador": ["*"],
   "Administrador do Sistema": ["*"],
-  "Secretário": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.approve", "report.view", "asset.view", "indicadores"],
-  "Diretor": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.approve", "report.view", "asset.view"],
-  "Coordenador": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.approve", "report.view", "asset.view"],
-  "Gestor": ["organization.view", "comunicacao.view", "project.view", "project.create", "task.manage", "ticket.create", "ticket.approve", "report.view", "asset.view", "workflow.manage"],
-  "Gerente de Projeto": ["organization.view", "comunicacao.view", "project.view", "project.create", "task.manage", "ticket.create", "report.view", "asset.view", "workflow.manage"],
-  "Líder de Equipe": ["organization.view", "comunicacao.view", "project.view", "task.manage", "ticket.create", "ticket.manage", "asset.view", "report.view"],
-  "Técnico de TI": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.manage", "asset.view", "asset.manage", "report.view"],
-  "Servidor": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "asset.view"],
-  "Visualizador": ["organization.view", "comunicacao.view", "project.view", "asset.view", "report.view"],
+  "Secretário": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.approve", "report.view", "report.generate", "report.export", "asset.view", "indicadores", "organizationChart.view", "team.edit", "password.change"],
+  "Diretor": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.approve", "report.view", "report.generate", "report.export", "asset.view", "organizationChart.view", "team.edit", "password.change"],
+  "Coordenador": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.approve", "report.view", "report.generate", "report.export", "asset.view", "organizationChart.view", "team.edit", "password.change"],
+  "Gestor": ["organization.view", "comunicacao.view", "project.view", "project.create", "task.manage", "ticket.create", "ticket.approve", "report.view", "report.generate", "report.export", "asset.view", "workflow.manage", "team.create", "team.edit", "team.members.manage", "organizationChart.view", "password.change"],
+  "Gerente de Projeto": ["organization.view", "comunicacao.view", "project.view", "project.create", "task.manage", "ticket.create", "report.view", "report.generate", "report.export", "asset.view", "workflow.manage", "team.edit", "team.members.manage", "organizationChart.view", "password.change"],
+  "Líder de Equipe": ["organization.view", "comunicacao.view", "project.view", "task.manage", "ticket.create", "ticket.manage", "asset.view", "report.view", "report.generate", "team.members.manage", "organizationChart.view", "password.change"],
+  "Técnico de TI": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.manage", "asset.view", "asset.manage", "report.view", "report.generate", "security.incident.create", "password.change"],
+  "Servidor": ["organization.view", "comunicacao.view", "project.view", "ticket.create", "asset.view", "password.change"],
+  "Visualizador": ["organization.view", "comunicacao.view", "project.view", "asset.view", "report.view", "password.change"],
+  "Gestor de Segurança da Informação": [
+    "organization.view", "comunicacao.view", "project.view", "asset.view", "report.view", "report.generate", "report.export",
+    "security.dashboard.view", "security.topology.view", "security.topology.manage", "security.firewall.view", "security.firewall.manage",
+    "security.network.view", "security.network.manage", "security.incident.create", "security.incident.manage",
+    "security.vulnerability.manage", "security.backup.view", "security.policy.manage", "security.credential.view",
+    "security.credential.manage", "security.audit.view", "passwordPolicy.manage", "password.reset", "organizationChart.view",
+  ],
+  "Analista de Segurança": [
+    "organization.view", "comunicacao.view", "project.view", "report.view", "report.generate",
+    "security.dashboard.view", "security.topology.view", "security.firewall.view", "security.network.view",
+    "security.incident.create", "security.incident.manage", "security.vulnerability.manage", "security.backup.view",
+    "security.policy.manage", "security.credential.view", "security.audit.view", "password.change",
+  ],
+  "Auditor de Segurança": [
+    "organization.view", "report.view", "report.generate", "report.export", "asset.view",
+    "security.dashboard.view", "security.topology.view", "security.firewall.view", "security.network.view",
+    "security.backup.view", "security.audit.view",
+  ],
+  "Administrador de Infraestrutura": [
+    "organization.view", "comunicacao.view", "project.view", "ticket.create", "ticket.manage", "asset.view", "asset.manage",
+    "report.view", "report.generate", "security.dashboard.view", "security.topology.view", "security.topology.manage",
+    "security.firewall.view", "security.firewall.manage", "security.network.view", "security.network.manage",
+    "security.backup.view", "security.incident.create", "organizationChart.view", "password.change",
+  ],
 };
 
 export function temPermissaoPerfil(perfil: string, chave: string): boolean {
@@ -399,6 +432,7 @@ export const NAV_PERMISSOES: Record<string, string> = {
   organograma: "organization.view", calendario: "organization.view", documentos: "organization.view",
   indicadores: "report.view", riscos: "report.view", relatorios: "report.view",
   administracao: "system.configure", configuracoes: "system.configure",
+  seguranca: "security.dashboard.view", monitoramento: "report.view",
 };
 
 /* ===================== Comunicação interna ===================== */

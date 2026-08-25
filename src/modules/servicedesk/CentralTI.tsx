@@ -14,7 +14,7 @@ export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
     chamados, servicos, gruposSuporte, usuarios, unidades, ativos, regrasSLA, config, atual,
     abrirChamado, mudarStatusChamado, atribuirChamado, comentarChamado, decidirAprovacao,
     setServicos, setRegrasSLA, criarArtigoBase, baseConhecimento, temPermissao,
-    simularRoteamento, modoRestrito,
+    simularRoteamento, modoRestrito, converterChamadoEmIncidente,
   } = app;
   const toast = useToast();
   const [aba, setAba] = useState<Aba>("portal");
@@ -548,6 +548,15 @@ export default function CentralTI({ irPara }: { irPara: (v: string) => void }) {
         })()}
         {chamadoAtual && (
           <>
+            {temPermissao("security.incident.create") && !["Fechado", "Cancelado", "Rejeitado"].includes(chamadoAtual.status) && (
+              <button className="btn btn-outline flex-1" style={{ color: "var(--red)", borderColor: "rgba(179,64,42,0.5)" }}
+                onClick={() => {
+                  const inc = converterChamadoEmIncidente(chamadoAtual.id, { titulo: chamadoAtual.titulo, severidade: "Alta", categoria: "Outro" });
+                  if (inc) { toast("Incidente de segurança criado", "verde", `${inc.numero} — vínculo mantido com ${chamadoAtual.numero}`); setDetalhe(null); }
+                }}>
+                <Icon name="escudo" size={15} /> Converter em Incidente
+              </button>
+            )}
             {podeGerir && !["Fechado", "Cancelado", "Rejeitado"].includes(chamadoAtual.status) && (
               <button className="btn btn-outline flex-1" onClick={() => setModalAtribuir(true)}><Icon name="usuario" size={15} /> Atribuir</button>
             )}

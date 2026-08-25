@@ -6,22 +6,23 @@ import { fmtData, fmtDataLonga, tempoRel } from "../lib/format";
 import { Avatar, Brasao, Chip, Icon } from "./ui";
 
 export type ViewKey =
-  | "painel" | "minha-area" | "comunicacao" | "central-ti" | "patrimonio" | "projetos" | "tarefas" | "demandas"
-  | "fluxos" | "equipes" | "organograma" | "calendario" | "documentos" | "indicadores" | "riscos" | "relatorios"
-  | "aprovacoes" | "administracao" | "configuracoes";
+  | "painel" | "minha-area" | "comunicacao" | "central-ti" | "patrimonio" | "seguranca" | "projetos" | "tarefas"
+  | "demandas" | "fluxos" | "equipes" | "organograma" | "calendario" | "documentos" | "monitoramento"
+  | "indicadores" | "riscos" | "relatorios" | "aprovacoes" | "administracao" | "configuracoes";
 
 const NAV: { grupo: string; itens: { chave: ViewKey; icone: string }[] }[] = [
   { grupo: M.grupos.principal, itens: [{ chave: "painel", icone: "painel" }, { chave: "minha-area", icone: "area" }, { chave: "comunicacao", icone: "chat" }] },
-  { grupo: "Serviços de TI", itens: [{ chave: "central-ti", icone: "fone" }, { chave: "patrimonio", icone: "caixa" }] },
+  { grupo: "Serviços de TI", itens: [{ chave: "central-ti", icone: "fone" }, { chave: "patrimonio", icone: "caixa" }, { chave: "seguranca", icone: "escudo" }] },
   { grupo: M.grupos.gestao, itens: [{ chave: "projetos", icone: "projetos" }, { chave: "tarefas", icone: "tarefas" }, { chave: "demandas", icone: "demandas" }, { chave: "fluxos", icone: "fluxos" }] },
   { grupo: M.grupos.estrutura, itens: [{ chave: "equipes", icone: "equipes" }, { chave: "organograma", icone: "organograma" }, { chave: "calendario", icone: "calendario" }, { chave: "documentos", icone: "documentos" }] },
-  { grupo: M.grupos.monitoramento, itens: [{ chave: "indicadores", icone: "indicadores" }, { chave: "riscos", icone: "riscos" }, { chave: "relatorios", icone: "relatorios" }] },
+  { grupo: M.grupos.monitoramento, itens: [{ chave: "monitoramento", icone: "monitor" }, { chave: "indicadores", icone: "indicadores" }, { chave: "riscos", icone: "riscos" }, { chave: "relatorios", icone: "relatorios" }] },
   { grupo: M.grupos.sistema, itens: [{ chave: "administracao", icone: "administracao" }, { chave: "configuracoes", icone: "configuracoes" }] },
 ];
 
 const TITULOS: Record<ViewKey, string> = {
   "painel": M.nav.painel, "minha-area": M.nav.minhaArea, "comunicacao": M.nav.comunicacao,
-  "central-ti": M.nav.centralTI, "patrimonio": M.nav.patrimonio, "projetos": M.nav.projetos,
+  "central-ti": M.nav.centralTI, "patrimonio": M.nav.patrimonio, "seguranca": "Segurança da Informação",
+  "monitoramento": "Monitoramento", "projetos": M.nav.projetos,
   "tarefas": M.nav.tarefas, "demandas": M.nav.demandas, "fluxos": M.nav.fluxos, "equipes": M.nav.equipes,
   "organograma": M.nav.organograma, "calendario": M.nav.calendario, "documentos": M.nav.documentos,
   "indicadores": M.nav.indicadores, "riscos": M.nav.riscos, "relatorios": M.nav.relatorios,
@@ -250,7 +251,9 @@ export function Shell({ view, irPara, onLogout, children }: {
       >
         <div className="hazard h-[5px] flex-none" style={{ background: `repeating-linear-gradient(-45deg, var(--accent) 0 10px, var(--deep) 10px 20px)` }} />
         <div className="flex items-center gap-3 px-4 pt-5 pb-4 flex-none">
-          <Brasao size={38} />
+          {config.identidade.brasaoDataUrl && config.identidade.usoBrasao.includes("menu")
+            ? <img src={config.identidade.brasaoDataUrl} alt="Brasão" style={{ width: 40, height: 44, objectFit: "contain", background: "#fff", borderRadius: 6, padding: 2 }} />
+            : <Brasao size={38} />}
           <div className="min-w-0">
             <div className="font-display font-extrabold text-[19px] leading-none text-[#f4f7f2] tracking-tight">{nomeProduto}</div>
             <div className="text-[10px] mt-1 leading-tight" style={{ color: "rgba(244,247,242,0.55)" }}>{config.marca.subtitulo}</div>
@@ -383,7 +386,7 @@ export function Shell({ view, irPara, onLogout, children }: {
 
         <footer className="px-6 py-4 text-[11px] flex flex-wrap items-center gap-x-4 gap-y-1 flex-none" style={{ color: "var(--muted)", borderTop: "1px solid var(--line)" }}>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: "var(--green)" }} /> Sistema operacional — ambiente de produção</span>
-          <span>{config.orgao.nome} · {nomeProduto} v2.4.1</span>
+          <span>{config.orgao.nome} · {nomeProduto} v2.4.1 · {config.identidade.rodape}</span>
           <span className="ml-auto">{emAberto} tarefas em aberto · {patrimonioEmUso} equipamentos em uso · fuso America/Sao_Paulo</span>
         </footer>
       </div>

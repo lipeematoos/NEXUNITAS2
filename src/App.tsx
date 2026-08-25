@@ -14,6 +14,8 @@ import { Calendario, Documentos } from "./views/Calendario";
 import { Indicadores, Relatorios } from "./views/Analise";
 import Riscos from "./views/Riscos";
 import { Administracao, Configuracoes } from "./views/Sistema";
+import Seguranca from "./modules/seguranca/Seguranca";
+import Monitoramento from "./views/Monitoramento";
 import Comunicacao from "./modules/comunicacao/Comunicacao";
 import CentralTI from "./modules/servicedesk/CentralTI";
 import Aprovacoes from "./modules/servicedesk/Aprovacoes";
@@ -79,6 +81,8 @@ export default function App() {
             {view === "central-ti" && <CentralTI irPara={irPara} />}
             {view === "aprovacoes" && <Aprovacoes />}
             {view === "patrimonio" && <Patrimonio />}
+            {view === "seguranca" && <Seguranca />}
+            {view === "monitoramento" && <Monitoramento />}
             {view === "projetos" && <Projetos />}
             {view === "tarefas" && <Tarefas />}
             {view === "demandas" && <Demandas />}

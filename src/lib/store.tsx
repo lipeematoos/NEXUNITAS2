@@ -12,6 +12,12 @@ import {
   SERVICOS_EXTRAS_SEED, SERVICOS_SEED, Servico, SnapshotRelatorio, TAREFAS_SEED, Tarefa, TIPOS_UNIDADE_SEED,
   TipoUnidade, UNIDADES_GESTORAS_SEED, UNIDADES_SEED, USUARIOS_SEED, Unidade, UnidadeGestora, Usuario, temPermissaoPerfil,
 } from "./data";
+import {
+  ATIVOS_SEGURANCA_SEED, CAMADAS_SEED, COFRE_LOG_SEED, COFRE_SEED, CONTROLES_SEED, CamadaSeguranca, CofreLog,
+  ControleSeguranca, CredencialCofre, DominioMaturidade, INCIDENTES_SEG_SEED, IncidenteSeguranca, MATURIDADE_SEED,
+  POLITICAS_SEG_SEED, PoliticaSeguranca, REVISAO_REGRAS_SEED, RevisaoRegraFirewall, VULNERABILIDADES_SEED,
+  Vulnerabilidade, cifrar, decifrar,
+} from "./seguranca-seed";
 
 export interface ConfigSistema {
   orgao: { nome: string; cnpj: string; endereco: string; municipio: string; uf: string };
@@ -20,6 +26,11 @@ export interface ConfigSistema {
   seguranca: Record<string, boolean>;
   marca: { produto: string; subtitulo: string; corPrimaria: string; corAcento: string };
   centralTI: { prefixo: string; expediente: string; grupoPadraoId: string };
+  identidade: {
+    nomeSistema: string; nomeCurto: string; sigla: string;
+    brasaoDataUrl: string | null; logoDataUrl: string | null;
+    usoBrasao: string[]; rodape: string; textoInstitucional: string; msgLogin: string;
+  };
 }
 
 const CONFIG_INICIAL: ConfigSistema = {
@@ -29,6 +40,13 @@ const CONFIG_INICIAL: ConfigSistema = {
   seguranca: { mfa: true, senhaForte: true, bloqueioTentativas: true, sessaoLimite: true },
   marca: { produto: "GovFlow", subtitulo: "Plataforma Integrada de Gestão para Órgãos Públicos", corPrimaria: "#0b2a20", corAcento: "#f2b70a" },
   centralTI: { prefixo: "TI-2026", expediente: "Segunda a sexta, das 8h às 18h", grupoPadraoId: "g1" },
+  identidade: {
+    nomeSistema: "GovFlow", nomeCurto: "GovFlow", sigla: "GF",
+    brasaoDataUrl: null, logoDataUrl: null,
+    usoBrasao: ["login", "menu", "relatorios"], rodape: "Uso exclusivo de servidores autorizados — atividade monitorada.",
+    textoInstitucional: "Sistema Integrado de Gestão e Acompanhamento",
+    msgLogin: "Acesso restrito a servidores autorizados. Toda atividade é registrada em auditoria.",
+  },
 };
 
 interface DadosNovoChamado {
@@ -42,7 +60,19 @@ export interface ResultadoRoteamento {
   regra: string; detalhe: string; passos: string[];
 }
 
-interface Store {
+export interface PoliticaSenhaCfg {
+  tamanhoMin: number; maiusculas: boolean; minusculas: boolean; numeros: boolean; especiais: boolean;
+  historico: number; expiracaoDias: number; tentativas: number; bloqueioMin: number; obrigatoriaPrimeiroAcesso: boolean;
+}
+
+export interface TemplateRelatorio {
+  id: string; nome: string; descricao: string; fonte: string; colunas: string[];
+  agrupamento: string; layout: "Retrato" | "Paisagem"; formatos: string[]; ativo: boolean;
+}
+export interface RelatorioSalvo { id: string; nome: string; fonte: string; busca: string; criadoEm: string; }
+export interface HistoricoRelatorio { id: string; relatorio: string; usuario: string; data: string; formato: string; filtros: string; registros: number; }
+
+export interface Store {
   usuarios: Usuario[]; unidades: Unidade[]; equipes: Equipe[]; projetos: Projeto[]; tarefas: Tarefa[];
   demandas: Demanda[]; fluxos: Fluxo[]; documentos: Documento[]; riscos: Risco[]; notificacoes: Notificacao[];
   eventos: EventoAgenda[]; auditoria: Auditoria[]; perfis: PerfilAcesso[]; config: ConfigSistema;
@@ -54,6 +84,13 @@ interface Store {
   regrasObsolescencia: { categoria: string; anos: number }[];
   licenca: LicencaSistema; eventosLicenca: EventoLicenca[]; snapshots: SnapshotRelatorio[];
   modoRestrito: boolean;
+  // Segurança da Informação
+  camadas: CamadaSeguranca[]; controles: ControleSeguranca[]; incidentesSeguranca: IncidenteSeguranca[];
+  vulnerabilidades: Vulnerabilidade[]; politicasSeguranca: PoliticaSeguranca[]; cofre: CredencialCofre[];
+  cofreLog: CofreLog[]; revisoesRegras: RevisaoRegraFirewall[]; maturidade: DominioMaturidade[];
+  politicaSenha: PoliticaSenhaCfg;
+  // Relatórios
+  templatesRelatorio: TemplateRelatorio[]; relatoriosSalvos: RelatorioSalvo[]; historicoRelatorios: HistoricoRelatorio[];
   atual: Usuario; perfilSimulado: string;
   setPerfilSimulado: (p: string) => void;
   temPermissao: (chave: string) => boolean;
@@ -74,6 +111,8 @@ interface Store {
   setConfig: (c: ConfigSistema) => void;
   criarUnidade: (u: Omit<Unidade, "id">) => void;
   removerUnidade: (id: string) => void;
+  atualizarUnidade: (id: string, patch: Partial<Unidade>) => void;
+  moverUnidade: (id: string, novoPaiId: string) => boolean;
   // Comunicação
   enviarMensagem: (canalId: string, texto: string, autorId?: string, anexos?: { nome: string; tamanho: string }[]) => void;
   reagirMensagem: (msgId: string, emoji: string, userId: string) => void;
@@ -87,6 +126,7 @@ interface Store {
   atribuirChamado: (id: string, tecnicoId: string | null, grupoId: string | null) => void;
   comentarChamado: (id: string, texto: string, tipo: "resposta" | "interna") => void;
   decidirAprovacao: (chamadoId: string, etapaId: string, decisao: "Aprovado" | "Rejeitado" | "Ajuste solicitado", comentario: string) => void;
+  converterChamadoEmIncidente: (chamadoId: string, dados: { titulo: string; severidade: string; categoria: string }) => IncidenteSeguranca | null;
   setRegrasAprovacao: (r: RegraAprovacao[]) => void;
   setServicos: (s: Servico[]) => void;
   setRegrasSLA: (s: RegraSLA[]) => void;
@@ -107,6 +147,33 @@ interface Store {
   setResultadoInventario: (campanhaId: string, patrimonioId: string, resultado: string, obs?: string) => void;
   setRegrasObsolescencia: (r: { categoria: string; anos: number }[]) => void;
   salvarSnapshot: (nome: string, filtros: string, total: number) => SnapshotRelatorio;
+  // Segurança da Informação — ações
+  criarIncidente: (i: Omit<IncidenteSeguranca, "id" | "numero" | "status">) => IncidenteSeguranca;
+  mudarStatusIncidente: (id: string, status: string, detalhe: string) => void;
+  mudarStatusVulnerabilidade: (id: string, status: string) => void;
+  aceitarPolitica: (id: string) => void;
+  setStatusControle: (id: string, status: string) => void;
+  adicionarCamada: (nome: string, tipo: string) => void;
+  toggleCamada: (id: string) => void;
+  decidirRevisaoRegra: (regraId: string, decisao: RevisaoRegraFirewall["decisao"], justificativa: string) => void;
+  revelarCredencial: (id: string) => string;
+  criarCredencial: (c: Omit<CredencialCofre, "id" | "criadoEm" | "rotacionadaEm" | "segredoCifrado">, segredo: string) => void;
+  rotacionarCredencial: (id: string, novoSegredo: string) => void;
+  setMaturidade: (m: DominioMaturidade[]) => void;
+  setPoliticaSenha: (p: PoliticaSenhaCfg) => void;
+  alterarSenhaAdmin: (atual: string, nova: string) => string | null;
+  redefinirSenhaUsuario: (id: string) => string;
+  // Equipes
+  criarEquipe: (e: Omit<Equipe, "id">) => void;
+  atualizarEquipe: (id: string, patch: Partial<Equipe>) => void;
+  adicionarMembroEquipe: (equipeId: string, userId: string, papel: string) => void;
+  removerMembroEquipe: (equipeId: string, userId: string) => void;
+  // Relatórios
+  registrarGeracao: (relatorio: string, formato: string, filtros: string, registros: number) => void;
+  salvarRelatorioFiltro: (nome: string, fonte: string, busca: string) => void;
+  excluirRelatorioSalvo: (id: string) => void;
+  salvarTemplateRelatorio: (t: Omit<TemplateRelatorio, "id">) => void;
+  toggleTemplateRelatorio: (id: string) => void;
   // Licenciamento e configuração
   validarLicenca: (origem: string) => void;
   importarLicenca: (texto: string) => boolean;
@@ -125,16 +192,13 @@ export function useApp(): Store {
 let seq = 1000;
 const nid = (p: string) => `${p}${++seq}`;
 const agoraISO = () => new Date().toISOString();
-
-const hashSimples = (s: string) => {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
-  return h.toString(16).padStart(8, "0").toUpperCase();
-};
+type CampoData = { [k in "data"]: string };
+const dtAgora = (): CampoData => ({ ["data"]: agoraISO() });
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [usuarios, setUsuarios] = useState(USUARIOS_SEED);
   const [unidades, setUnidades] = useState(UNIDADES_SEED);
+  const [equipes, setEquipes] = useState(EQUIPES_SEED);
   const [projetos, setProjetos] = useState(PROJETOS_SEED);
   const [tarefas, setTarefas] = useState(TAREFAS_SEED);
   const [demandas, setDemandas] = useState(DEMANDAS_SEED);
@@ -153,7 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [servicos, setServicos] = useState<Servico[]>(() => [...SERVICOS_SEED, ...SERVICOS_EXTRAS_SEED]);
   const [regrasAprovacao, setRegrasAprovacao] = useState(REGRAS_APROVACAO_SEED);
   const [regrasSLA, setRegrasSLA] = useState(REGRAS_SLA_SEED);
-  const [ativos, setAtivos] = useState<Ativo[]>(() => [...ATIVOS_SEED, ...ATIVOS_INCOMPLETOS_SEED]);
+  const [ativos, setAtivos] = useState<Ativo[]>(() => [...ATIVOS_SEED, ...ATIVOS_INCOMPLETOS_SEED, ...ATIVOS_SEGURANCA_SEED]);
   const [baseConhecimento, setBaseConhecimento] = useState(BASE_CONHECIMENTO_SEED);
   const [inventario, setInventario] = useState<CampanhaInventario[]>(() =>
     INVENTARIO_SEED.map((c) => ({
@@ -164,7 +228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [gruposSuporte, setGruposSuporte] = useState<GrupoSuporte[]>(() => [
     ...GRUPOS_SUPORTE_SEED.map((g) => ({
-      dominioId: "dom1", sigla: g.nome.slice(0, 3).toUpperCase(), horario: config.centralTI.expediente,
+      dominioId: "dom1", sigla: g.nome.slice(0, 3).toUpperCase(), horario: "Segunda a sexta, das 8h às 18h",
       estrategiaAtribuicao: "Menor número de chamados ativos" as const, permiteAtribAuto: true,
       permiteSelecaoTecnico: "Opcional" as const, ...g,
     })),
@@ -179,6 +243,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [licenca, setLicenca] = useState(LICENCA_SEED);
   const [eventosLicenca, setEventosLicenca] = useState(EVENTOS_LICENCA_SEED);
   const [snapshots, setSnapshots] = useState<SnapshotRelatorio[]>([]);
+  // Segurança
+  const [camadas, setCamadas] = useState(CAMADAS_SEED);
+  const [controles, setControles] = useState(CONTROLES_SEED);
+  const [incidentesSeguranca, setIncidentesSeguranca] = useState(INCIDENTES_SEG_SEED);
+  const [vulnerabilidades, setVulnerabilidades] = useState(VULNERABILIDADES_SEED);
+  const [politicasSeguranca, setPoliticasSeguranca] = useState(POLITICAS_SEG_SEED);
+  const [cofre, setCofre] = useState(COFRE_SEED);
+  const [cofreLog, setCofreLog] = useState(COFRE_LOG_SEED);
+  const [revisoesRegras, setRevisoesRegras] = useState(REVISAO_REGRAS_SEED);
+  const [maturidade, setMaturidade] = useState(MATURIDADE_SEED);
+  const [politicaSenha, setPoliticaSenha] = useState<PoliticaSenhaCfg>({
+    tamanhoMin: 8, maiusculas: true, minusculas: true, numeros: true, especiais: true,
+    historico: 5, expiracaoDias: 90, tentativas: 5, bloqueioMin: 30, obrigatoriaPrimeiroAcesso: true,
+  });
+  // Relatórios
+  const [templatesRelatorio, setTemplatesRelatorio] = useState<TemplateRelatorio[]>([
+    { id: "tpl1", nome: "Relatório Geral de Equipamentos", descricao: "Inventário completo de tecnologia com pertencimento e localização.", fonte: "ativos", colunas: ["patrimonio", "equipamento", "categoria", "secretaria", "localizacao", "responsavel", "status"], agrupamento: "categoria", layout: "Paisagem", formatos: ["PDF", "XLSX", "CSV"], ativo: true },
+    { id: "tpl2", nome: "Chamados do Mês", descricao: "Movimento da Central de Serviços com SLA e grupos.", fonte: "chamados", colunas: ["numero", "titulo", "tipo", "prioridade", "status", "grupo", "prazo"], agrupamento: "status", layout: "Retrato", formatos: ["PDF", "CSV"], ativo: true },
+    { id: "tpl3", nome: "Incidentes de Segurança", descricao: "Registro de incidentes com severidade e situação.", fonte: "incidentes", colunas: ["numero", "titulo", "severidade", "status", "unidade", "responsavel"], agrupamento: "severidade", layout: "Retrato", formatos: ["PDF", "CSV"], ativo: true },
+  ]);
+  const [relatoriosSalvos, setRelatoriosSalvos] = useState<RelatorioSalvo[]>([
+    { id: "rs1", nome: "Chamados da SEAD — últimos registros", fonte: "chamados", busca: "SEAD", criadoEm: isoAgoraMenos() },
+  ]);
+  const [historicoRelatorios, setHistoricoRelatorios] = useState<HistoricoRelatorio[]>([]);
   const [perfilSimulado, setPerfilSimulado] = useState("Administrador do Sistema");
 
   const atual = usuarios[0];
@@ -192,20 +280,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const registrarEventoLicenca = (evento: string, status: string, origem: string, detalhe: string) => {
-    setEventosLicenca((es) => [{ id: nid("evl"), data: agoraISO(), evento, status, origem, detalhe }, ...es]);
+    setEventosLicenca((es) => [{ id: nid("evl"), ...dtAgora(), evento, status, origem, detalhe }, ...es]);
+  };
+
+  const logCofre = (credencial: string, acao: string) => {
+    setCofreLog((l) => [{ id: nid("cl"), usuario: atual.nome, ...dtAgora(), credencial, acao, ip: "10.0.4.21" }, ...l]);
   };
 
   const store: Store = useMemo(() => {
-    const unDe = (id: string | null) => unidades.find((u) => u.id === id);
-    const grupoDe = (id: string | null) => gruposSuporte.find((g) => g.id === id);
+    const unDe = (id: string | null | undefined) => unidades.find((u) => u.id === id);
+    const grupoDe = (id: string | null | undefined) => gruposSuporte.find((g) => g.id === id);
     const ancestrais = (unidadeId: string): string[] => {
       const lista: string[] = [];
       let cur = unDe(unidadeId);
       while (cur?.parentId) { lista.push(cur.parentId); cur = unDe(cur.parentId); }
       return lista;
     };
+    const descendentes = (unidadeId: string): string[] => {
+      const filhos = unidades.filter((u) => u.parentId === unidadeId).map((u) => u.id);
+      return filhos.concat(...filhos.map(descendentes));
+    };
 
-    /* ============ Motor de roteamento (precedência configurável) ============ */
+    /* ============ Motor de roteamento ============ */
     const resolverRoteamento = (unidadeId: string, servicoId: string | null, categoriaId: string): ResultadoRoteamento => {
       const passos: string[] = [];
       const fim = (grupoId: string, regra: string, detalhe: string, tecnicoId: string | null = null): ResultadoRoteamento => {
@@ -259,7 +355,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           passos.push(`✓ Cobertura: ${grupoDe(cob.grupoId)?.nome} atende ${cur.sigla}${nivel > 0 ? " (herdada da unidade superior)" : ""}.`);
           return fim(cob.grupoId, `Cobertura de atendimento — ${cur.sigla}`, `${grupoDe(cob.grupoId)?.nome} · ${nivel > 0 ? "Herdada (unidades subordinadas)" : "Regra direta"}`);
         }
-        passos.push(`— ${cur.sigla}: sem equipe própria${nivel === 0 ? "" : " que cubra subordinadas"} nesta regra.`);
+        passos.push(`— ${cur.sigla}: sem cobertura nesta regra.`);
         cur = unDe(cur.parentId);
         nivel++;
       }
@@ -284,13 +380,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     return {
-      usuarios, unidades, equipes: EQUIPES_SEED, projetos, tarefas, demandas, fluxos,
+      usuarios, unidades, equipes, projetos, tarefas, demandas, fluxos,
       documentos, riscos, notificacoes, eventos, auditoria, perfis, config,
       canais, mensagens, comunicados, chamados, gruposSuporte, servicos,
       regrasAprovacao, regrasSLA, ativos, inventario, licencas: LICENCAS_SEED, baseConhecimento,
       dominios, gestoras: UNIDADES_GESTORAS_SEED, fundos: FUNDOS_SEED, tiposUnidade,
       coberturas, regrasRoteamento, responsaveisGlobais, regrasObsolescencia,
       licenca, eventosLicenca, snapshots, modoRestrito,
+      camadas, controles, incidentesSeguranca, vulnerabilidades, politicasSeguranca, cofre, cofreLog,
+      revisoesRegras, maturidade, politicaSenha,
+      templatesRelatorio, relatoriosSalvos, historicoRelatorios,
       atual, perfilSimulado,
       setPerfilSimulado,
       temPermissao: (chave) => temPermissaoPerfil(perfilSimulado, chave),
@@ -308,14 +407,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const protocolo = `DEM-2026-0${345 + Math.floor(Math.random() * 50)}`;
         setDemandas((ds) => [{
           ...d, id: nid("d"), protocolo, status: "Nova", criadaEm: agoraISO(),
-          historico: [{ data: agoraISO(), usuario: atual.nome, acao: "Demanda aberta", detalhe: "Solicitação registrada no sistema." }],
+          historico: [{ ...dtAgora(), usuario: atual.nome, acao: "Demanda aberta", detalhe: "Solicitação registrada no sistema." }],
         }, ...ds]);
         registrarAuditoria("Abertura de demanda", protocolo, `${d.tipo} — ${usuarios.find((u) => u.id === d.solicitanteId)?.nome ?? ""}`);
       },
       mudarStatusDemanda: (id, status, detalhe) => {
         setDemandas((ds) => ds.map((d) => d.id === id ? {
           ...d, status,
-          historico: [...d.historico, { data: agoraISO(), usuario: atual.nome, acao: `Status alterado para ${status}`, detalhe }],
+          historico: [...d.historico, { ...dtAgora(), usuario: atual.nome, acao: `Status alterado para ${status}`, detalhe }],
         } : d));
         registrarAuditoria("Atualização de demanda", demandas.find((d) => d.id === id)?.protocolo ?? id, `Status: ${status}`);
       },
@@ -359,10 +458,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUnidades((us) => us.filter((x) => x.id !== id && x.parentId !== id));
         registrarAuditoria("Exclusão de unidade administrativa", u?.nome ?? id, "Unidade e subordinadas removidas");
       },
+      atualizarUnidade: (id, patch) => {
+        const antes = unDe(id);
+        setUnidades((us) => us.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+        const mudancas = Object.keys(patch).map((k) => {
+          if (k === "responsavelId") return `Responsável: ${antes?.responsavelId ? usuarios.find((x) => x.id === antes.responsavelId)?.nome : "—"} → ${usuarios.find((x) => x.id === patch.responsavelId)?.nome ?? "—"}`;
+          if (k === "ativa") return patch.ativa ? "Unidade reativada" : "Unidade desativada";
+          if (k === "nome") return `Nome: ${antes?.nome} → ${patch.nome}`;
+          return k;
+        }).join("; ");
+        registrarAuditoria("Alteração de unidade administrativa", antes?.nome ?? id, mudancas);
+      },
+      moverUnidade: (id, novoPaiId) => {
+        if (id === novoPaiId) return false;
+        if (descendentes(id).includes(novoPaiId)) return false; // referência circular
+        if (!unDe(novoPaiId)) return false;
+        const u = unDe(id);
+        const paiAnterior = unDe(u?.parentId);
+        const novoPai = unDe(novoPaiId);
+        setUnidades((us) => us.map((x) => (x.id === id ? { ...x, parentId: novoPaiId } : x)));
+        registrarAuditoria("Alteração de vínculo hierárquico", u?.nome ?? id, `${paiAnterior?.nome ?? "—"} → ${novoPai?.nome ?? "—"} · estrutura anterior preservada em auditoria`);
+        return true;
+      },
 
       /* ---------- Comunicação ---------- */
       enviarMensagem: (canalId, texto, autorId, anexos) => {
-        setMensagens((ms) => [...ms, { id: nid("m"), canalId, autorId: autorId ?? atual.id, texto, data: agoraISO(), reacoes: {}, anexos }]);
+        setMensagens((ms) => [...ms, { id: nid("m"), canalId, autorId: autorId ?? atual.id, texto, ...dtAgora(), reacoes: {}, anexos }]);
       },
       reagirMensagem: (msgId, emoji, userId) => {
         setMensagens((ms) => ms.map((m) => {
@@ -412,7 +533,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           patrimonioId: d.patrimonioId, criadoEm: agoraISO(), prazoResolucao: prazo.toISOString(),
           tecnicoPreferencialId: d.tecnicoPreferencialId ?? null,
           roteamento: [{
-            data: agoraISO(), regra: rota.regra,
+            ...dtAgora(), regra: rota.regra,
             detalhe: rota.detalhe, dominio: rota.dominioNome, grupo: rota.grupoNome,
             tecnico: nomeTec, automatico: !d.tecnicoPreferencialId,
           }],
@@ -420,9 +541,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ? regra.etapas.map((e) => ({ etapaId: e.id, etapaNome: e.nome, status: "Pendente" as const, aprovadorNome: e.tipoAprovador === "Grupo" ? `Grupo ${e.aprovador}` : e.aprovador }))
             : [],
           historico: [
-            { data: agoraISO(), usuario: atual.nome, acao: "Chamado aberto", detalhe: `${d.tipo} registrado no Portal de Serviços.` },
-            { data: agoraISO(), usuario: "sistema", acao: "Chamado direcionado automaticamente", detalhe: `Roteamento aplicado: ${rota.regra} · Grupo: ${rota.grupoNome} · Domínio: ${rota.dominioNome}${nomeTec ? ` · Técnico: ${nomeTec}` : ""}` },
-            ...(requerAprovacao ? [{ data: agoraISO(), usuario: "sistema", acao: "Enviado para aprovação", detalhe: `Regra: ${regra!.nome} · Etapa 1 — ${regra!.etapas[0].nome}.` }] : []),
+            { ...dtAgora(), usuario: atual.nome, acao: "Chamado aberto", detalhe: `${d.tipo} registrado no Portal de Serviços.` },
+            { ...dtAgora(), usuario: "sistema", acao: "Chamado direcionado automaticamente", detalhe: `Roteamento aplicado: ${rota.regra} · Grupo: ${rota.grupoNome} · Domínio: ${rota.dominioNome}${nomeTec ? ` · Técnico: ${nomeTec}` : ""}` },
+            ...(requerAprovacao ? [{ ...dtAgora(), usuario: "sistema", acao: "Enviado para aprovação", detalhe: `Regra: ${regra!.nome} · Etapa 1 — ${regra!.etapas[0].nome}.` }] : []),
           ],
           comentarios: [],
         };
@@ -433,7 +554,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       mudarStatusChamado: (id, status, detalhe) => {
         setChamados((cs) => cs.map((c) => c.id === id ? {
           ...c, status,
-          historico: [...c.historico, { data: agoraISO(), usuario: atual.nome, acao: `Status alterado para ${status}`, detalhe }],
+          historico: [...c.historico, { ...dtAgora(), usuario: atual.nome, acao: `Status alterado para ${status}`, detalhe }],
         } : c));
         registrarAuditoria("Atualização de chamado", chamados.find((c) => c.id === id)?.numero ?? id, `Status: ${status}`);
       },
@@ -442,21 +563,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const gru = grupoDe(grupoId ?? "");
         setChamados((cs) => cs.map((c) => c.id === id ? {
           ...c, tecnicoId, grupoId, status: tecnicoId ? "Atribuído" : c.status,
-          roteamento: [...(c.roteamento ?? []), { data: agoraISO(), regra: "Atribuição manual", detalhe: `Grupo: ${gru?.nome ?? "—"} · Técnico: ${tec?.nome ?? "Não atribuído"}`, dominio: gru ? (dominios.find((dd) => dd.id === gru.dominioId)?.nome ?? "—") : "—", grupo: gru?.nome ?? "—", tecnico: tec?.nome, automatico: false }],
-          historico: [...c.historico, { data: agoraISO(), usuario: atual.nome, acao: "Chamado atribuído", detalhe: `Grupo: ${gru?.nome ?? "—"} · Técnico: ${tec?.nome ?? "Não atribuído"}` }],
+          roteamento: [...(c.roteamento ?? []), { ...dtAgora(), regra: "Atribuição manual", detalhe: `Grupo: ${gru?.nome ?? "—"} · Técnico: ${tec?.nome ?? "Não atribuído"}`, dominio: gru ? (dominios.find((dd) => dd.id === gru.dominioId)?.nome ?? "—") : "—", grupo: gru?.nome ?? "—", tecnico: tec?.nome, automatico: false }],
+          historico: [...c.historico, { ...dtAgora(), usuario: atual.nome, acao: "Chamado atribuído", detalhe: `Grupo: ${gru?.nome ?? "—"} · Técnico: ${tec?.nome ?? "Não atribuído"}` }],
         } : c));
         registrarAuditoria("Atribuição de chamado", chamados.find((c) => c.id === id)?.numero ?? id, `Técnico: ${tec?.nome ?? "—"}`);
       },
       comentarChamado: (id, texto, tipo) => {
         setChamados((cs) => cs.map((c) => c.id === id ? {
-          ...c, comentarios: [...c.comentarios, { id: nid("cc"), autorId: atual.id, texto, data: agoraISO(), tipo }],
+          ...c, comentarios: [...c.comentarios, { id: nid("cc"), autorId: atual.id, texto, ...dtAgora(), tipo }],
         } : c));
       },
       decidirAprovacao: (chamadoId, etapaId, decisao, comentario) => {
         const ch = chamados.find((c) => c.id === chamadoId);
         if (!ch) return;
         const aprovacoes = ch.aprovacoes.map((a) => a.etapaId === etapaId
-          ? { ...a, status: decisao, aprovadorNome: atual.nome, data: agoraISO(), comentario: comentario || undefined }
+          ? { ...a, status: decisao, aprovadorNome: atual.nome, ...dtAgora(), comentario: comentario || undefined }
           : a);
         const rejeitada = decisao === "Rejeitado";
         const todasAprovadas = aprovacoes.every((a) => a.status === "Aprovado");
@@ -472,14 +593,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
           grupoId: rota ? rota.grupoId : c.grupoId,
           tecnicoId: tecnicoLiberado ?? c.tecnicoId,
           historico: [...c.historico, {
-            data: agoraISO(), usuario: atual.nome, acao: `Etapa ${decisao === "Aprovado" ? "aprovada" : decisao}`,
+            ...dtAgora(), usuario: atual.nome, acao: `Etapa ${decisao === "Aprovado" ? "aprovada" : decisao}`,
             detalhe: comentario || (todasAprovadas ? "Todas as etapas aprovadas — liberado para execução." : novaEtapaPendente[0] ? `Próxima etapa: ${novaEtapaPendente[0]}.` : ""),
-          }, ...(rota ? [{ data: agoraISO(), usuario: "sistema", acao: "Encaminhado ao grupo de atendimento", detalhe: `Roteamento: ${rota.regra} · Grupo: ${rota.grupoNome}${tecnicoLiberado ? ` · Técnico: ${usuarios.find((u) => u.id === tecnicoLiberado)?.nome}` : ""}` }] : [])],
+          }, ...(rota ? [{ ...dtAgora(), usuario: "sistema", acao: "Encaminhado ao grupo de atendimento", detalhe: `Roteamento: ${rota.regra} · Grupo: ${rota.grupoNome}${tecnicoLiberado ? ` · Técnico: ${usuarios.find((u) => u.id === tecnicoLiberado)?.nome}` : ""}` }] : [])],
         } : c));
         registrarAuditoria(
           decisao === "Aprovado" ? "Aprovação de solicitação" : decisao === "Rejeitado" ? "Rejeição de solicitação" : "Ajuste solicitado",
           ch.numero, `Etapa: ${ch.aprovacoes.find((a) => a.etapaId === etapaId)?.etapaNome ?? ""}`
         );
+      },
+      converterChamadoEmIncidente: (chamadoId, dados) => {
+        const ch = chamados.find((c) => c.id === chamadoId);
+        if (!ch) return null;
+        const proxNum = incidentesSeguranca.reduce((mx, i) => Math.max(mx, Number(i.numero.split("-").pop()) || 0), 0) + 1;
+        const numero = `SEG-2026-${String(proxNum).padStart(6, "0")}`;
+        const novo: IncidenteSeguranca = {
+          id: nid("iseg"), numero, titulo: dados.titulo, descricao: `Convertido do chamado ${ch.numero}: ${ch.descricao}`,
+          ...dtAgora(), hora: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+          unidadeId: ch.unidadeId, ativoId: ch.patrimonioId ?? undefined, severidade: dados.severidade as IncidenteSeguranca["severidade"],
+          impacto: "Avaliação em andamento.", status: "Aberto", responsavelId: atual.id,
+          evidencias: [`Chamado de origem: ${ch.numero}`], acoesImediatas: "Registro convertido para tratamento pela equipe de segurança.",
+          chamadoOrigem: ch.numero,
+        };
+        setIncidentesSeguranca((is) => [novo, ...is]);
+        setChamados((cs) => cs.map((c) => c.id === chamadoId ? {
+          ...c,
+          historico: [...c.historico, { ...dtAgora(), usuario: atual.nome, acao: "Convertido em incidente de segurança", detalhe: `Vínculo criado com ${numero} — os registros permanecem relacionados.` }],
+        } : c));
+        registrarAuditoria("Conversão de chamado em incidente", numero, `Origem: ${ch.numero} · Categoria: ${dados.categoria}`);
+        return novo;
       },
       setRegrasAprovacao: (r) => {
         setRegrasAprovacao(r);
@@ -516,17 +658,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const u = unDe(unidadeId);
         registrarAuditoria("Configuração de atendimento de TI", u?.nome ?? unidadeId, "Parâmetros de atendimento da unidade atualizados");
       },
-      setTiposUnidade: (t) => {
-        setTiposUnidade(t);
-      },
+      setTiposUnidade: (t) => setTiposUnidade(t),
 
       /* ---------- Patrimônio ---------- */
       movimentarAtivo: (ativoId, m) => {
         setAtivos((as) => as.map((a) => a.id === ativoId ? {
-          ...a, movimentacoes: [...a.movimentacoes, { ...m, data: agoraISO(), usuario: atual.nome }],
+          ...a, movimentacoes: [...a.movimentacoes, { ...m, ...dtAgora(), usuario: atual.nome }],
         } : a));
         const a = ativos.find((x) => x.id === ativoId);
-        registrarAuditoria("Movimentação de patrimônio", `Patrimônio ${a?.patrimonio ?? ativoId}`, `${m.origem} → ${m.destino}`);
+        registrarAuditoria("Movimentação de patrimônio", `Patrimônio ${a?.patrimonio ?? ativoId}`, `${m.origem} → ${m.destino} (localização alterada; pertencimento preservado)`);
       },
       registrarManutencao: (ativoId, m) => {
         setAtivos((as) => as.map((a) => a.id === ativoId ? { ...a, manutencoes: [...a.manutencoes, { ...m, id: nid("mn") }] } : a));
@@ -544,7 +684,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           movimentacoes: [...a.movimentacoes, {
             origem: `${a.predio} — ${a.sala || "local atual"}`, destino: info.destino || "Baixa patrimonial",
             responsavelAnterior: usuarios.find((u) => u.id === a.responsavelId)?.nome ?? "Estoque",
-            novoResponsavel: "Baixa patrimonial", data: agoraISO(), usuario: atual.nome,
+            novoResponsavel: "Baixa patrimonial", ...dtAgora(), usuario: atual.nome,
             motivo: `Baixa: ${info.motivo} (${info.documento || "sem documento"})`,
           }],
         } : a));
@@ -555,7 +695,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setInventario((invs) => invs.map((c) => c.id === campanhaId ? {
           ...c,
           itens: c.itens.map((i) => (i.patrimonioId === patrimonioId ? { ...i, resultado } : i)),
-          historico: [...(c.historico ?? []), { patrimonioId, resultado, usuario: atual.nome, data: agoraISO(), obs }],
+          historico: [...(c.historico ?? []), { patrimonioId, resultado, usuario: atual.nome, ...dtAgora(), obs }],
         } : c));
       },
       setRegrasObsolescencia: (r) => {
@@ -563,13 +703,144 @@ export function AppProvider({ children }: { children: ReactNode }) {
         registrarAuditoria("Alteração em regra de obsolescência", "Patrimônio de TI", "Critérios de idade por categoria atualizados");
       },
       salvarSnapshot: (nome, filtros, total) => {
-        const snap: SnapshotRelatorio = {
-          id: nid("snap"), nome, data: agoraISO(), filtros, total, usuario: atual.nome,
-          hash: hashSimples(`${nome}|${filtros}|${total}|${agoraISO()}`),
-        };
+        const hash = hashSimples(`${nome}|${filtros}|${total}|${agoraISO()}`);
+        const snap: SnapshotRelatorio = { id: nid("snap"), nome, ...dtAgora(), filtros, total, usuario: atual.nome, hash };
         setSnapshots((s) => [snap, ...s]);
-        registrarAuditoria("Snapshot de relatório oficial", nome, `${total} registros · hash ${snap.hash}`);
+        registrarAuditoria("Snapshot de relatório oficial", nome, `${total} registros · hash ${hash}`);
         return snap;
+      },
+
+      /* ---------- Segurança da Informação ---------- */
+      criarIncidente: (i) => {
+        const proxNum = incidentesSeguranca.reduce((mx, x) => Math.max(mx, Number(x.numero.split("-").pop()) || 0), 0) + 1;
+        const numero = `SEG-2026-${String(proxNum).padStart(6, "0")}`;
+        const novo: IncidenteSeguranca = { ...i, id: nid("iseg"), numero, status: "Aberto" };
+        setIncidentesSeguranca((is) => [novo, ...is]);
+        registrarAuditoria("Abertura de incidente de segurança", numero, `${i.titulo} · Severidade: ${i.severidade}`);
+        return novo;
+      },
+      mudarStatusIncidente: (id, status, detalhe) => {
+        setIncidentesSeguranca((is) => is.map((i) => i.id === id ? { ...i, status: status as IncidenteSeguranca["status"], encerramento: status === "Fechado" ? agoraISO() : i.encerramento } : i));
+        const i = incidentesSeguranca.find((x) => x.id === id);
+        registrarAuditoria("Atualização de incidente de segurança", i?.numero ?? id, `Status: ${status}${detalhe ? ` · ${detalhe}` : ""}`);
+      },
+      mudarStatusVulnerabilidade: (id, status) => {
+        setVulnerabilidades((vs) => vs.map((v) => v.id === id ? { ...v, status: status as Vulnerabilidade["status"] } : v));
+        const v = vulnerabilidades.find((x) => x.id === id);
+        registrarAuditoria("Atualização de vulnerabilidade", v?.titulo ?? id, `Status: ${status}`);
+      },
+      aceitarPolitica: (id) => {
+        setPoliticasSeguranca((ps) => ps.map((p) => p.id === id && !p.lidoPor.includes(atual.id) ? { ...p, lidoPor: [...p.lidoPor, atual.id] } : p));
+        const p = politicasSeguranca.find((x) => x.id === id);
+        registrarAuditoria("Aceite de política de segurança", `${p?.titulo ?? id} (v${p?.versao ?? "—"})`, "Registro de ciência do servidor");
+      },
+      setStatusControle: (id, status) => {
+        setControles((cs) => cs.map((c) => c.id === id ? { ...c, status: status as ControleSeguranca["status"], ultimaRevisao: agoraISO().slice(0, 10) } : c));
+        const c = controles.find((x) => x.id === id);
+        registrarAuditoria("Alteração de controle de segurança", c?.nome ?? id, `Status: ${status}`);
+      },
+      adicionarCamada: (nome, tipo) => {
+        setCamadas((cs) => [...cs, { id: nid("cam"), nome, codigo: nome.slice(0, 3).toUpperCase(), ordem: cs.length + 1, descricao: "Camada personalizada criada pelo administrador.", tipo, status: "Em implantação" }]);
+        registrarAuditoria("Criação de camada de segurança", nome, `Tipo: ${tipo}`);
+      },
+      toggleCamada: (id) => {
+        setCamadas((cs) => cs.map((c) => c.id === id ? { ...c, status: c.status === "Ativa" ? "Inativa" : "Ativa" } : c));
+      },
+      decidirRevisaoRegra: (regraId, decisao, justificativa) => {
+        setRevisoesRegras((rs) => rs.map((r) => r.regraId === regraId && r.decisao === null
+          ? { ...r, decisao, revisor: atual.nome, data: agoraISO().slice(0, 10), justificativa }
+          : r));
+        registrarAuditoria("Revisão de regra de firewall", `Regra ${regraId.toUpperCase()}`, `Decisão: ${decisao}`);
+      },
+      revelarCredencial: (id) => {
+        const c = cofre.find((x) => x.id === id);
+        if (!c) return "";
+        logCofre(c.nome, "Credencial visualizada");
+        return decifrar(c.segredoCifrado);
+      },
+      criarCredencial: (c, segredo) => {
+        setCofre((cs) => [{ ...c, id: nid("cr"), segredoCifrado: cifrar(segredo), criadoEm: agoraISO().slice(0, 10), rotacionadaEm: agoraISO().slice(0, 10) }, ...cs]);
+        logCofre(c.nome, "Credencial criada");
+        registrarAuditoria("Criação de credencial no cofre", c.nome, "Segredo armazenado cifrado — valor não registrado em auditoria");
+      },
+      rotacionarCredencial: (id, novoSegredo) => {
+        setCofre((cs) => cs.map((c) => c.id === id ? { ...c, segredoCifrado: cifrar(novoSegredo), rotacionadaEm: agoraISO().slice(0, 10) } : c));
+        const c = cofre.find((x) => x.id === id);
+        logCofre(c?.nome ?? id, "Credencial rotacionada");
+        registrarAuditoria("Rotação de credencial", c?.nome ?? id, "Segredo substituído — valor não registrado em auditoria");
+      },
+      setMaturidade: (m) => {
+        setMaturidade(m);
+        registrarAuditoria("Atualização da avaliação de maturidade", "Modelo interno de maturidade", "Níveis revisados pelo gestor de segurança");
+      },
+      setPoliticaSenha: (p) => {
+        setPoliticaSenha(p);
+        registrarAuditoria("Alteração da política de senhas", "Segurança", `Mínimo ${p.tamanhoMin} caracteres · expiração ${p.expiracaoDias} dias · bloqueio após ${p.tentativas} tentativas`);
+      },
+      alterarSenhaAdmin: (senhaAtual, nova) => {
+        if (senhaAtual !== "GovFlow@2026") return "A senha atual informada não confere.";
+        const falhas: string[] = [];
+        if (nova.length < politicaSenha.tamanhoMin) falhas.push(`mínimo de ${politicaSenha.tamanhoMin} caracteres`);
+        if (politicaSenha.maiusculas && !/[A-Z]/.test(nova)) falhas.push("letra maiúscula");
+        if (politicaSenha.minusculas && !/[a-z]/.test(nova)) falhas.push("letra minúscula");
+        if (politicaSenha.numeros && !/[0-9]/.test(nova)) falhas.push("número");
+        if (politicaSenha.especiais && !/[^A-Za-z0-9]/.test(nova)) falhas.push("caractere especial");
+        if (falhas.length > 0) return `A nova senha não atende à política: ${falhas.join(", ")}.`;
+        setUsuarios((us) => us.map((u) => u.id === atual.id ? { ...u, ultimaTrocaSenha: agoraISO() } : u));
+        registrarAuditoria("Alteração de senha", `Usuário ${atual.usuario}`, "Senha alterada pelo próprio usuário — valor nunca armazenado em texto claro");
+        return null;
+      },
+      redefinirSenhaUsuario: (id) => {
+        const temporaria = `Gf-${Math.random().toString(36).slice(2, 6)}${Math.floor(Math.random() * 900 + 100)}!`;
+        setUsuarios((us) => us.map((u) => u.id === id ? { ...u, trocarSenha: true } : u));
+        const u = usuarios.find((x) => x.id === id);
+        registrarAuditoria("Redefinição de senha", u?.nome ?? id, "Senha temporária gerada — alteração obrigatória no próximo acesso (valor não registrado)");
+        return temporaria;
+      },
+
+      /* ---------- Equipes ---------- */
+      criarEquipe: (e) => {
+        setEquipes((es) => [...es, { ...e, id: nid("eq"), ativa: true }]);
+        registrarAuditoria("Criação de equipe", e.nome, `Tipo: ${e.tipo ?? "—"} · Responsável: ${usuarios.find((u) => u.id === e.liderId)?.nome ?? "—"}`);
+      },
+      atualizarEquipe: (id, patch) => {
+        setEquipes((es) => es.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+        const e = equipes.find((x) => x.id === id);
+        registrarAuditoria("Alteração de equipe", e?.nome ?? id, "Dados da equipe atualizados");
+      },
+      adicionarMembroEquipe: (equipeId, userId, papel) => {
+        setEquipes((es) => es.map((e) => e.id === equipeId && !e.membroIds.includes(userId)
+          ? { ...e, membroIds: [...e.membroIds, userId], papeis: { ...(e.papeis ?? {}), [userId]: papel } }
+          : e));
+        const e = equipes.find((x) => x.id === equipeId);
+        const u = usuarios.find((x) => x.id === userId);
+        registrarAuditoria("Adição de colaborador em equipe", `${u?.nome ?? userId} → ${e?.nome ?? equipeId}`, `Papel: ${papel}`);
+      },
+      removerMembroEquipe: (equipeId, userId) => {
+        setEquipes((es) => es.map((e) => e.id === equipeId
+          ? { ...e, membroIds: e.membroIds.filter((m) => m !== userId), papeis: Object.fromEntries(Object.entries(e.papeis ?? {}).filter(([k]) => k !== userId)) }
+          : e));
+        const e = equipes.find((x) => x.id === equipeId);
+        const u = usuarios.find((x) => x.id === userId);
+        registrarAuditoria("Remoção de colaborador de equipe", `${u?.nome ?? userId} ← ${e?.nome ?? equipeId}`, "Vínculo encerrado");
+      },
+
+      /* ---------- Relatórios ---------- */
+      registrarGeracao: (relatorio, formato, filtros, registros) => {
+        setHistoricoRelatorios((h) => [{ id: nid("hr"), relatorio, usuario: atual.nome, ...dtAgora(), formato, filtros, registros }, ...h]);
+      },
+      salvarRelatorioFiltro: (nome, fonte, busca) => {
+        setRelatoriosSalvos((r) => [...r, { id: nid("rs"), nome, fonte, busca, criadoEm: agoraISO() }]);
+      },
+      excluirRelatorioSalvo: (id) => {
+        setRelatoriosSalvos((r) => r.filter((x) => x.id !== id));
+      },
+      salvarTemplateRelatorio: (t) => {
+        setTemplatesRelatorio((ts) => [...ts, { ...t, id: nid("tpl") }]);
+        registrarAuditoria("Criação de modelo de relatório", t.nome, `Fonte: ${t.fonte} · ${t.colunas.length} colunas`);
+      },
+      toggleTemplateRelatorio: (id) => {
+        setTemplatesRelatorio((ts) => ts.map((t) => (t.id === id ? { ...t, ativo: !t.ativo } : t)));
       },
 
       /* ---------- Licenciamento ---------- */
@@ -600,14 +871,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       exportarConfiguracao: () => ({
         produto: config.marca.produto, versao: 1, exportadoEm: agoraISO(),
-        orgao: config.orgao, regional: config.regional,
+        orgao: config.orgao, regional: config.regional, identidade: { ...config.identidade, brasaoDataUrl: config.identidade.brasaoDataUrl ? "(arquivo em volume persistente)" : null },
         tiposUnidade, unidades, gestoras: UNIDADES_GESTORAS_SEED, fundos: FUNDOS_SEED,
         dominios, gruposSuporte, coberturas, regrasRoteamento, responsaveisGlobais,
-        servicos, regrasAprovacao, regrasSLA, perfis, regrasObsolescencia,
+        servicos, regrasAprovacao, regrasSLA, perfis, regrasObsolescencia, templatesRelatorio, politicaSenha,
       }),
       // eslint-disable-next-line react-hooks/exhaustive-deps
     };
-  }, [usuarios, unidades, projetos, tarefas, demandas, fluxos, documentos, riscos, notificacoes, eventos, auditoria, perfis, config, canais, mensagens, comunicados, chamados, servicos, gruposSuporte, dominios, coberturas, regrasRoteamento, responsaveisGlobais, tiposUnidade, regrasAprovacao, regrasSLA, ativos, inventario, licenca, eventosLicenca, snapshots, perfilSimulado]);
+  }, [usuarios, unidades, equipes, projetos, tarefas, demandas, fluxos, documentos, riscos, notificacoes, eventos, auditoria, perfis, config, canais, mensagens, comunicados, chamados, servicos, gruposSuporte, dominios, coberturas, regrasRoteamento, responsaveisGlobais, tiposUnidade, regrasAprovacao, regrasSLA, ativos, inventario, licenca, eventosLicenca, snapshots, camadas, controles, incidentesSeguranca, vulnerabilidades, politicasSeguranca, cofre, cofreLog, revisoesRegras, maturidade, politicaSenha, templatesRelatorio, relatoriosSalvos, historicoRelatorios, perfilSimulado]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
+}
+
+function hashSimples(s: string) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, "0").toUpperCase();
+}
+
+function isoAgoraMenos() {
+  const d = new Date();
+  d.setDate(d.getDate() - 3);
+  return d.toISOString();
 }

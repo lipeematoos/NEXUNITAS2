@@ -2,6 +2,8 @@ import { ReactNode, createContext, useContext, useEffect, useId, useRef, useStat
 import { PRIORIDADES, STATUS_ATIVO, STATUS_CHAMADO, STATUS_DEMANDA, STATUS_PROJETO, STATUS_TAREFA, TOM_CSS, Tom } from "../lib/data";
 import { fmtNum } from "../lib/format";
 
+export type { Tom } from "../lib/data";
+
 /* ===================== Ícones (SVG próprios) ===================== */
 
 const ICONES: Record<string, ReactNode> = {

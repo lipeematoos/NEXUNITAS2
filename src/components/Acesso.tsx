@@ -395,7 +395,9 @@ export function Login({ onEntrar }: { onEntrar: () => void }) {
         <div className="relative p-9 flex flex-col" style={{ background: "linear-gradient(170deg, var(--deep) 0%, #0e3527 100%)" }}>
           <div className="absolute top-0 left-0 right-0 hazard h-[6px]" />
           <div className="flex items-center gap-3.5 mt-2">
-            <Brasao size={52} />
+            {config.identidade.brasaoDataUrl && config.identidade.usoBrasao.includes("login")
+              ? <img src={config.identidade.brasaoDataUrl} alt="Brasão" style={{ width: 54, height: 60, objectFit: "contain", background: "#fff", borderRadius: 8, padding: 3 }} />
+              : <Brasao size={52} />}
             <div>
               <div className="font-display font-extrabold text-[30px] text-[#f4f7f2] leading-none tracking-tight">
                 <Scramble texto={config.marca.produto || "GovFlow"} />
@@ -426,7 +428,7 @@ export function Login({ onEntrar }: { onEntrar: () => void }) {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-[12px] font-bold text-[#f4f7f2]">{config.orgao.nome}</div>
-                <div className="text-[10.5px] mt-0.5" style={{ color: "rgba(244,247,242,0.5)" }}>{M.sistema.acesso}</div>
+                <div className="text-[10.5px] mt-0.5" style={{ color: "rgba(244,247,242,0.5)" }}>{config.identidade.msgLogin || M.sistema.acesso}</div>
               </div>
               <div className="text-right">
                 <div className="font-display font-bold text-[17px] text-[#f4f7f2] tabular-nums leading-tight">
